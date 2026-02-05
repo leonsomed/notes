@@ -3,6 +3,7 @@ import type { PartialBlock } from "@blocknote/core";
 const DB_NAME = "notes-db";
 const DB_VERSION = 1;
 const STORE_NAME = "notes";
+const UPLOADS_STORE = "uploads";
 
 function openNotesDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -12,6 +13,9 @@ function openNotesDb(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains(UPLOADS_STORE)) {
+        db.createObjectStore(UPLOADS_STORE, { keyPath: "id" });
       }
     };
 
@@ -28,6 +32,15 @@ interface StoredDocument {
   createdAt: number;
   content: PartialBlock[] | undefined;
   tags: string[];
+}
+
+interface StoredUpload {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  createdAt: number;
+  data: Blob;
 }
 
 export interface NoteDocument extends StoredDocument {
@@ -116,4 +129,41 @@ export async function deleteDocument(id: number): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Unable to read file."));
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function storeUploadAndGetUrl(file: File): Promise<string> {
+  const db = await openNotesDb();
+  const record: StoredUpload = {
+    id: crypto.randomUUID(),
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    createdAt: Date.now(),
+    data: file,
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(UPLOADS_STORE, "readwrite");
+    const store = tx.objectStore(UPLOADS_STORE);
+    store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+
+  return fileToDataUrl(file);
 }

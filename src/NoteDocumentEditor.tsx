@@ -3,6 +3,7 @@ import "@blocknote/core/fonts/inter.css";
 import { BlockNoteView } from "@blocknote/mantine";
 import { type Block, type PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
+import { storeUploadAndGetUrl } from "./notesDb";
 
 interface NoteDocumentEditorProps {
   initialContent: PartialBlock[] | undefined;
@@ -15,7 +16,10 @@ export function NoteDocumentEditor({
   onChange,
   className,
 }: NoteDocumentEditorProps) {
-  const editor = useCreateBlockNote({ initialContent });
+  const editor = useCreateBlockNote({
+    initialContent,
+    uploadFile: storeUploadAndGetUrl,
+  });
 
   return (
     <BlockNoteView

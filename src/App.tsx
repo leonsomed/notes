@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@blocknote/mantine/style.css";
 import "@blocknote/core/fonts/inter.css";
 import {
@@ -15,6 +15,7 @@ const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
 const tagKey = (value: string) => normalizeTag(value).toLowerCase();
 
 const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
+const SAVE_DEBOUNCE_MS = 500;
 
 const getLatestDocumentId = (docs: NoteDocument[]) => {
   const latestDoc = docs.reduce<NoteDocument | null>((latest, doc) => {
@@ -22,6 +23,100 @@ const getLatestDocumentId = (docs: NoteDocument[]) => {
     return doc.createdAt > latest.createdAt ? doc : latest;
   }, null);
   return latestDoc?.id ?? null;
+};
+
+const normalizeSearchText = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const extractTextFromBlocks = (blocks: NoteDocument["content"]) => {
+  if (!blocks) return "";
+  const parts: string[] = [];
+
+  const collectInlineText = (content: unknown) => {
+    if (!Array.isArray(content)) return;
+    content.forEach((item) => {
+      if (typeof item === "string") {
+        parts.push(item);
+        return;
+      }
+      if (item && typeof item === "object") {
+        const maybeText = (item as { text?: unknown }).text;
+        if (typeof maybeText === "string") parts.push(maybeText);
+        const nested = (item as { content?: unknown }).content;
+        if (Array.isArray(nested)) collectInlineText(nested);
+      }
+    });
+  };
+
+  const walkBlocks = (items: NoteDocument["content"]) => {
+    if (!items) return;
+    items.forEach((block) => {
+      if (!block || typeof block !== "object") return;
+      const maybeContent = (block as { content?: unknown }).content;
+      if (Array.isArray(maybeContent)) collectInlineText(maybeContent);
+      const maybeChildren = (block as { children?: unknown }).children;
+      if (Array.isArray(maybeChildren)) walkBlocks(maybeChildren);
+    });
+  };
+
+  walkBlocks(blocks);
+  return parts.join(" ");
+};
+
+const fuzzyScore = (query: string, text: string) => {
+  if (!query || !text) return 0;
+  if (text.includes(query)) {
+    const lengthBonus = Math.min(
+      30,
+      Math.round((query.length / text.length) * 20),
+    );
+    return 100 + lengthBonus;
+  }
+  let score = 0;
+  let lastIndex = -1;
+  let consecutive = 0;
+  for (let i = 0; i < query.length; i += 1) {
+    const nextIndex = text.indexOf(query[i], lastIndex + 1);
+    if (nextIndex === -1) return 0;
+    if (nextIndex === lastIndex + 1) {
+      consecutive += 1;
+      score += 5 + consecutive;
+    } else {
+      consecutive = 0;
+      score += 2;
+    }
+    if (nextIndex === 0 || /[\s._-]/.test(text[nextIndex - 1])) {
+      score += 3;
+    }
+    lastIndex = nextIndex;
+  }
+  return score;
+};
+
+const scoreDocument = (doc: NoteDocument, tokens: string[]) => {
+  if (tokens.length === 0) return 0;
+  const titleText = normalizeSearchText(doc.title);
+  const tagsText = normalizeSearchText(doc.tags.join(" "));
+  const contentText = normalizeSearchText(extractTextFromBlocks(doc.content));
+  const fields = [
+    { text: titleText, weight: 3 },
+    { text: tagsText, weight: 2 },
+    { text: contentText, weight: 1 },
+  ];
+
+  let score = 0;
+  for (const token of tokens) {
+    let bestTokenScore = 0;
+    for (const field of fields) {
+      const fieldScore = fuzzyScore(token, field.text);
+      if (fieldScore > 0) {
+        bestTokenScore = Math.max(bestTokenScore, fieldScore * field.weight);
+      }
+    }
+    if (bestTokenScore === 0) return 0;
+    score += bestTokenScore;
+  }
+  return score;
 };
 
 function App() {
@@ -35,7 +130,40 @@ function App() {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftTag, setDraftTag] = useState("");
   const [isTagInputFocused, setIsTagInputFocused] = useState(false);
+  const [activeTagIndex, setActiveTagIndex] = useState(-1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
+  const pendingSaveRef = useRef<{
+    id: number;
+    doc: NoteDocument;
+  } | null>(null);
+  const flushPendingSave = useCallback(() => {
+    if (!pendingSaveRef.current) return;
+    const { id, doc } = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    updateDocument(id, doc).catch((e) => {
+      console.error(e);
+      setErrorMessage("Unable to save changes.");
+    });
+  }, [setErrorMessage]);
+  const scheduleSave = useCallback(
+    (id: number, doc: NoteDocument) => {
+      if (pendingSaveRef.current && pendingSaveRef.current.id !== id) {
+        flushPendingSave();
+      }
+      pendingSaveRef.current = { id, doc };
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = window.setTimeout(() => {
+        saveTimeoutRef.current = null;
+        flushPendingSave();
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [flushPendingSave],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -92,6 +220,17 @@ function App() {
     }
   };
 
+  const pendingDeleteDoc =
+    pendingDeleteId === null
+      ? null
+      : (documents.find((doc) => doc.id === pendingDeleteId) ?? null);
+
+  const handleConfirmDelete = async () => {
+    if (pendingDeleteId === null) return;
+    await handleDelete(pendingDeleteId);
+    setPendingDeleteId(null);
+  };
+
   const selectedDocument = useMemo(
     () => documents.find((doc) => doc.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
@@ -105,6 +244,15 @@ function App() {
       );
     }
   }, [selectedDocumentId]);
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   const tagSuggestions = useMemo(() => {
     const uniqueTags = new Map<string, string>();
@@ -130,6 +278,62 @@ function App() {
     const queryKey = tagKey(query);
     return tagSuggestions.filter((tag) => tagKey(tag).startsWith(queryKey));
   }, [draftTag, tagSuggestions]);
+
+  useEffect(() => {
+    if (!isTagInputFocused || visibleTagSuggestions.length === 0) {
+      setActiveTagIndex(-1);
+      return;
+    }
+    setActiveTagIndex((current) =>
+      current >= visibleTagSuggestions.length ? -1 : current,
+    );
+  }, [isTagInputFocused, visibleTagSuggestions]);
+
+  const tagSearchQuery = useMemo(() => {
+    const trimmed = searchQuery.trim();
+    const match = /^tag:\s*(.*)$/i.exec(trimmed);
+    if (!match) return null;
+    return normalizeTag(match[1]);
+  }, [searchQuery]);
+
+  const searchTokens = useMemo(() => {
+    if (tagSearchQuery !== null) return [];
+    const normalized = normalizeSearchText(searchQuery);
+    if (!normalized) return [];
+    return normalized.split(" ").filter(Boolean);
+  }, [searchQuery, tagSearchQuery]);
+
+  const filteredDocuments = useMemo(() => {
+    if (tagSearchQuery !== null) {
+      if (!tagSearchQuery) return [];
+      const queryKey = tagKey(tagSearchQuery);
+      return documents
+        .filter((doc) => doc.tags.some((tag) => tagKey(tag) === queryKey))
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+    }
+    if (searchTokens.length === 0) {
+      return [...documents].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    }
+    return documents
+      .map((doc) => ({ doc, score: scoreDocument(doc, searchTokens) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (
+          new Date(b.doc.createdAt).getTime() -
+          new Date(a.doc.createdAt).getTime()
+        );
+      })
+      .map((entry) => entry.doc);
+  }, [documents, searchTokens, tagSearchQuery]);
+
+  const hasActiveSearch = searchTokens.length > 0 || tagSearchQuery !== null;
 
   useEffect(() => {
     setIsEditingTitle(false);
@@ -232,7 +436,9 @@ function App() {
                 Documents
               </p>
               <p className="text-sm text-slate-300">
-                {isLoading ? "Loading..." : `${documents.length} total`}
+                {isLoading
+                  ? "Loading..."
+                  : `${filteredDocuments.length} of ${documents.length}`}
               </p>
             </div>
             <button
@@ -250,45 +456,79 @@ function App() {
             </p>
           ) : null}
 
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search notes or tag:my-tag"
+              className="w-full bg-transparent text-xs text-slate-200 outline-none"
+              aria-label="Search notes or tag:my-tag"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="rounded-full px-1 text-slate-500 transition hover:text-slate-200"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+
           <div className="mt-5 flex flex-col gap-2">
             {documents.length === 0 && !isLoading ? (
               <div className="rounded-xl border border-dashed border-slate-800 p-4 text-xs text-slate-500">
                 No documents yet. Create your first one.
               </div>
             ) : null}
-            {[...documents]
-              .sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() -
-                  new Date(a.createdAt).getTime(),
-              )
-              .map((doc) => {
-                const isSelected = doc.id === selectedDocumentId;
-                const createdAtLabel = new Date(
-                  doc.createdAt,
-                ).toLocaleDateString(undefined, {
+            {filteredDocuments.length === 0 && hasActiveSearch ? (
+              <div className="rounded-xl border border-dashed border-slate-800 p-4 text-xs text-slate-500">
+                No matches found.
+              </div>
+            ) : null}
+            {filteredDocuments.map((doc) => {
+              const isSelected = doc.id === selectedDocumentId;
+              const createdAtLabel = new Date(doc.createdAt).toLocaleDateString(
+                undefined,
+                {
                   year: "numeric",
                   month: "short",
                   day: "numeric",
-                });
-                return (
-                  <button
-                    key={doc.id}
-                    type="button"
-                    onClick={() => setSelectedDocumentId(doc.id)}
-                    className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left text-sm transition ${
-                      isSelected
-                        ? "border-indigo-400 bg-indigo-500/10 text-white"
-                        : "border-slate-800 bg-slate-900/40 text-slate-300 hover:border-slate-700 hover:text-white"
-                    }`}
-                  >
-                    <span className="font-medium">{doc.title}</span>
-                    <span className="text-xs text-slate-500">
-                      {createdAtLabel}
-                    </span>
-                  </button>
-                );
-              })}
+                },
+              );
+              return (
+                <button
+                  key={doc.id}
+                  type="button"
+                  onClick={() => setSelectedDocumentId(doc.id)}
+                  className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                    isSelected
+                      ? "border-indigo-400 bg-indigo-500/10 text-white"
+                      : "border-slate-800 bg-slate-900/40 text-slate-300 hover:border-slate-700 hover:text-white"
+                  }`}
+                >
+                  <span className="font-medium">{doc.title}</span>
+                  <span className="text-xs text-slate-500">
+                    {createdAtLabel}
+                  </span>
+                  <span className="flex flex-wrap gap-1 text-xs text-slate-400">
+                    {doc.tags.length > 0 ? (
+                      doc.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-slate-800 bg-slate-900/50 px-2 py-0.5"
+                        >
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="italic text-slate-500">No tags</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </aside>
 
@@ -354,13 +594,49 @@ function App() {
                         onChange={(event) => setDraftTag(event.target.value)}
                         onFocus={() => setIsTagInputFocused(true)}
                         onKeyDown={(event) => {
+                          if (event.key === "ArrowDown") {
+                            if (visibleTagSuggestions.length === 0) return;
+                            event.preventDefault();
+                            setActiveTagIndex((current) =>
+                              current < 0
+                                ? 0
+                                : Math.min(
+                                    current + 1,
+                                    visibleTagSuggestions.length - 1,
+                                  ),
+                            );
+                            return;
+                          }
+                          if (event.key === "ArrowUp") {
+                            if (visibleTagSuggestions.length === 0) return;
+                            event.preventDefault();
+                            setActiveTagIndex((current) =>
+                              current < 0
+                                ? visibleTagSuggestions.length - 1
+                                : Math.max(current - 1, 0),
+                            );
+                            return;
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setDraftTag("");
+                            setIsTagInputFocused(false);
+                            setActiveTagIndex(-1);
+                            event.currentTarget.blur();
+                            return;
+                          }
                           if (event.key === "Enter" || event.key === ",") {
                             event.preventDefault();
-                            commitTag(draftTag);
+                            if (activeTagIndex >= 0) {
+                              commitTag(visibleTagSuggestions[activeTagIndex]);
+                            } else {
+                              commitTag(draftTag);
+                            }
                           }
                         }}
                         onBlur={() => {
                           setIsTagInputFocused(false);
+                          setActiveTagIndex(-1);
                           if (draftTag.trim()) commitTag(draftTag);
                         }}
                         placeholder="/ to show all tags"
@@ -378,7 +654,12 @@ function App() {
                                 event.preventDefault();
                                 commitTag(tag);
                               }}
-                              className="w-full px-2 py-1 text-left transition hover:bg-slate-900/60"
+                              className={`w-full px-2 py-1 text-left transition hover:bg-slate-900/60 ${
+                                activeTagIndex >= 0 &&
+                                visibleTagSuggestions[activeTagIndex] === tag
+                                  ? "bg-slate-900/60"
+                                  : ""
+                              }`}
                             >
                               {tag}
                             </button>
@@ -390,7 +671,7 @@ function App() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleDelete(selectedDocument.id)}
+                  onClick={() => setPendingDeleteId(selectedDocument.id)}
                   className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-300 transition hover:border-rose-400 hover:text-rose-300"
                 >
                   Delete
@@ -410,12 +691,9 @@ function App() {
                           : doc,
                       ),
                     );
-                    updateDocument(selectedDocument.id, {
+                    scheduleSave(selectedDocument.id, {
                       ...selectedDocument,
                       content: blocks,
-                    }).catch((e) => {
-                      console.error(e);
-                      setErrorMessage("Unable to save changes.");
                     });
                   }}
                 />
@@ -429,6 +707,43 @@ function App() {
             </div>
           )}
         </main>
+        {pendingDeleteId !== null ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+          >
+            <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
+              <h2
+                id="delete-dialog-title"
+                className="text-base font-semibold text-slate-100"
+              >
+                Delete document "{pendingDeleteDoc?.title}"?
+              </h2>
+              <p className="mt-2 text-sm text-slate-300">
+                This action cannot be undone.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteId(null)}
+                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
+                  autoFocus
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="rounded-full border border-rose-500 bg-rose-500/10 px-4 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
