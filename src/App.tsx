@@ -5,7 +5,10 @@ import {
   addDocument,
   deleteDocument,
   getDocuments,
+  exportDatabase,
+  restoreDatabase,
   updateDocument,
+  type ExportedNotesPayload,
   type NoteDocument,
 } from "./notesDb";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
@@ -61,6 +64,40 @@ const extractTextFromBlocks = (blocks: NoteDocument["content"]) => {
 
   walkBlocks(blocks);
   return parts.join(" ");
+};
+
+const isValidPayload = (value: unknown): value is ExportedNotesPayload => {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as ExportedNotesPayload;
+  if (typeof payload.version !== "number") return false;
+  if (typeof payload.exportedAt !== "number") return false;
+  if (!Array.isArray(payload.documents)) return false;
+  if (!Array.isArray(payload.uploads)) return false;
+
+  const docsValid = payload.documents.every((doc) => {
+    if (!doc || typeof doc !== "object") return false;
+    if (typeof doc.id !== "number") return false;
+    if (typeof doc.version !== "number") return false;
+    if (typeof doc.title !== "string") return false;
+    if (typeof doc.createdAt !== "number") return false;
+    if (!Array.isArray(doc.tags)) return false;
+    if (!doc.tags.every((tag) => typeof tag === "string")) return false;
+    return true;
+  });
+
+  if (!docsValid) return false;
+
+  return payload.uploads.every((upload) => {
+    if (!upload || typeof upload !== "object") return false;
+    return (
+      typeof upload.id === "string" &&
+      typeof upload.name === "string" &&
+      typeof upload.type === "string" &&
+      typeof upload.size === "number" &&
+      typeof upload.createdAt === "number" &&
+      typeof upload.dataUrl === "string"
+    );
+  });
 };
 
 const fuzzyScore = (query: string, text: string) => {
@@ -134,6 +171,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<{
     id: number;
@@ -253,6 +291,69 @@ function App() {
       flushPendingSave();
     };
   }, [flushPendingSave]);
+
+  const handleExport = async () => {
+    flushPendingSave();
+    try {
+      const payload = await exportDatabase();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `notes-export-${new Date(payload.exportedAt)
+        .toISOString()
+        .slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      setErrorMessage("Unable to export notes.");
+    }
+  };
+
+  const handleRestoreClick = () => {
+    restoreInputRef.current?.click();
+  };
+
+  const handleRestoreSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      if (!isValidPayload(parsed)) {
+        setErrorMessage("Invalid export file.");
+        return;
+      }
+      const confirmed = window.confirm(
+        "Restore will replace your current notes. Continue?",
+      );
+      if (!confirmed) return;
+
+      setIsLoading(true);
+      flushPendingSave();
+      await restoreDatabase(parsed);
+      const data = await getDocuments();
+      setDocuments(data);
+      setSelectedDocumentId(getLatestDocumentId(data));
+      setPendingDeleteId(null);
+      setSearchQuery("");
+      setErrorMessage(null);
+    } catch (e) {
+      console.error(e);
+      setErrorMessage("Unable to restore notes.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const tagSuggestions = useMemo(() => {
     const uniqueTags = new Map<string, string>();
@@ -448,6 +549,30 @@ function App() {
             >
               New
             </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={handleRestoreClick}
+              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
+            >
+              Restore
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleRestoreSelected}
+              className="hidden"
+              aria-hidden="true"
+            />
           </div>
 
           {errorMessage ? (

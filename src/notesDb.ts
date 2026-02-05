@@ -146,6 +146,29 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Unable to read blob."));
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  if (!response.ok) {
+    throw new Error("Unable to decode upload data.");
+  }
+  return response.blob();
+}
+
 export async function storeUploadAndGetUrl(file: File): Promise<string> {
   const db = await openNotesDb();
   const record: StoredUpload = {
@@ -166,4 +189,110 @@ export async function storeUploadAndGetUrl(file: File): Promise<string> {
   });
 
   return fileToDataUrl(file);
+}
+
+export interface ExportedUpload {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  createdAt: number;
+  dataUrl: string;
+}
+
+export interface ExportedNotesPayload {
+  version: number;
+  exportedAt: number;
+  documents: NoteDocument[];
+  uploads: ExportedUpload[];
+}
+
+export async function exportDatabase(): Promise<ExportedNotesPayload> {
+  const db = await openNotesDb();
+  const docs = await new Promise<NoteDocument[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const getAllRequest = store.getAll();
+    const getKeysRequest = store.getAllKeys();
+    tx.oncomplete = () => {
+      const documents = (getAllRequest.result as StoredDocument[]).map(
+        (value, index) => ({
+          ...value,
+          id: Number(getKeysRequest.result[index]),
+        }),
+      );
+      resolve(documents);
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+
+  const uploads = await new Promise<StoredUpload[]>((resolve, reject) => {
+    const tx = db.transaction(UPLOADS_STORE, "readonly");
+    const store = tx.objectStore(UPLOADS_STORE);
+    const getAllRequest = store.getAll();
+    tx.oncomplete = () => resolve(getAllRequest.result as StoredUpload[]);
+    tx.onerror = () => reject(tx.error);
+  });
+
+  const serializedUploads = await Promise.all(
+    uploads.map(async (upload) => ({
+      id: upload.id,
+      name: upload.name,
+      type: upload.type,
+      size: upload.size,
+      createdAt: upload.createdAt,
+      dataUrl: await blobToDataUrl(upload.data),
+    })),
+  );
+
+  return {
+    version: CURRENT_VERSION,
+    exportedAt: Date.now(),
+    documents: docs,
+    uploads: serializedUploads,
+  };
+}
+
+export async function restoreDatabase(
+  payload: ExportedNotesPayload,
+): Promise<void> {
+  const uploads = await Promise.all(
+    payload.uploads.map(async (upload) => ({
+      id: upload.id,
+      name: upload.name,
+      type: upload.type,
+      size: upload.size,
+      createdAt: upload.createdAt,
+      data: await dataUrlToBlob(upload.dataUrl),
+    })),
+  );
+
+  const db = await openNotesDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME, UPLOADS_STORE], "readwrite");
+    const notesStore = tx.objectStore(STORE_NAME);
+    const uploadsStore = tx.objectStore(UPLOADS_STORE);
+    notesStore.clear();
+    uploadsStore.clear();
+
+    payload.documents.forEach((doc) => {
+      notesStore.put(
+        {
+          version: doc.version,
+          title: doc.title,
+          createdAt: doc.createdAt,
+          content: doc.content,
+          tags: doc.tags,
+        },
+        doc.id,
+      );
+    });
+
+    uploads.forEach((upload) => {
+      uploadsStore.put(upload);
+    });
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
