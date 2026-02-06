@@ -11,8 +11,13 @@ import {
   type NoteDocument,
   type EncryptedVaultRecord,
 } from "../services/notesDb";
+import { BackupActionButton } from "./BackupActionButton";
+import { DocumentListItem } from "./DocumentListItem";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
 import { PairingGate } from "./PairingGate";
+import { SettingsCheckbox } from "./SettingsCheckbox";
+import { TextInput } from "./TextInput";
+import { TopBanner } from "./TopBanner";
 
 const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
 
@@ -697,37 +702,18 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
   return (
     <div className="min-h-screen min-w-[320px] bg-slate-950 text-white">
       {shouldShowConfigBanner ? (
-        <div className="sticky top-0 z-50 border-b border-amber-200/60 bg-amber-400 px-6 py-4 text-slate-900 shadow-lg">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em]">
-              You have not configured an upload server. Your changes are only
-              saved in this browser.
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:bg-slate-800"
-            >
-              Add server
-            </button>
-          </div>
-        </div>
+        <TopBanner
+          message="You have not configured an upload server. Your changes are only saved in this browser."
+          actionLabel="Add server"
+          onAction={() => setIsSettingsOpen(true)}
+        />
       ) : null}
       {shouldShowUploadFailureBanner ? (
-        <div className="sticky top-0 z-50 border-b border-amber-200/60 bg-amber-400 px-6 py-4 text-slate-900 shadow-lg">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em]">
-              Server unreachable. You have changes that have not been pushed.
-            </p>
-            <button
-              type="button"
-              onClick={runUpload}
-              className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:bg-slate-800"
-            >
-              Upload now
-            </button>
-          </div>
-        </div>
+        <TopBanner
+          message="Server unreachable. You have changes that have not been pushed."
+          actionLabel="Upload now"
+          onAction={runUpload}
+        />
       ) : null}
       <div className="flex min-h-screen">
         <aside className="w-72 border-r border-slate-900 bg-slate-950/60 px-4 py-6">
@@ -769,11 +755,12 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
           />
 
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
-            <input
+            <TextInput
+              variant="bare"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search notes or tag:my-tag"
-              className="w-full bg-transparent text-xs text-slate-200 outline-none"
+              className="w-full text-xs text-slate-200"
               aria-label="Search notes or tag:my-tag"
             />
             {searchQuery ? (
@@ -799,48 +786,14 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                 No matches found.
               </div>
             ) : null}
-            {filteredDocuments.map((doc) => {
-              const isSelected = doc.id === selectedDocumentId;
-              const createdAtLabel = new Date(doc.createdAt).toLocaleDateString(
-                undefined,
-                {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                },
-              );
-              return (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={() => setSelectedDocumentId(doc.id)}
-                  className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left text-sm transition ${
-                    isSelected
-                      ? "border-indigo-400 bg-indigo-500/10 text-white"
-                      : "border-slate-800 bg-slate-900/40 text-slate-300 hover:border-slate-700 hover:text-white"
-                  }`}
-                >
-                  <span className="font-medium">{doc.title}</span>
-                  <span className="text-xs text-slate-500">
-                    {createdAtLabel}
-                  </span>
-                  <span className="flex flex-wrap gap-1 text-xs text-slate-400">
-                    {doc.tags.length > 0 ? (
-                      doc.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-slate-800 bg-slate-900/50 px-2 py-0.5"
-                        >
-                          {tag}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="italic text-slate-500">No tags</span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
+            {filteredDocuments.map((doc) => (
+              <DocumentListItem
+                key={doc.id}
+                document={doc}
+                isSelected={doc.id === selectedDocumentId}
+                onSelect={() => setSelectedDocumentId(doc.id)}
+              />
+            ))}
           </div>
         </aside>
 
@@ -850,7 +803,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
               <div className="flex items-center justify-between px-8 py-6">
                 <div>
                   {isEditingTitle ? (
-                    <input
+                    <TextInput
                       ref={titleInputRef}
                       value={draftTitle}
                       onChange={(event) => setDraftTitle(event.target.value)}
@@ -864,7 +817,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                           setIsEditingTitle(false);
                         }
                       }}
-                      className="w-full max-w-105 rounded-lg border border-slate-800 bg-transparent px-2 py-1 text-2xl font-semibold text-white outline-none transition focus:border-indigo-400"
+                      className="w-full max-w-105 px-2 py-1 text-2xl font-semibold text-white"
                     />
                   ) : (
                     <h1
@@ -901,7 +854,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                       </span>
                     )}
                     <div className="relative min-w-40">
-                      <input
+                      <TextInput
                         value={draftTag}
                         onChange={(event) => setDraftTag(event.target.value)}
                         onFocus={() => setIsTagInputFocused(true)}
@@ -952,7 +905,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                           if (draftTag.trim()) commitTag(draftTag);
                         }}
                         placeholder="/ to show all tags"
-                        className="w-full rounded-lg border border-slate-800 bg-transparent px-2 py-1 text-xs text-slate-200 outline-none transition focus:border-indigo-400"
+                        className="w-full px-2 py-1 text-xs text-slate-200"
                       />
                       {isTagInputFocused &&
                       (draftTag.trim() || draftTag === "/") &&
@@ -1085,30 +1038,16 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                 Manage your data exports and restores.
               </p>
               <div className="mt-4 grid gap-3">
-                <button
-                  type="button"
+                <BackupActionButton
+                  label="Export notes"
+                  description="Download a JSON backup"
                   onClick={handleExport}
-                  className="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-900/40"
-                >
-                  <span className="font-medium text-slate-100">
-                    Export notes
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Download a JSON backup
-                  </span>
-                </button>
-                <button
-                  type="button"
+                />
+                <BackupActionButton
+                  label="Restore notes"
+                  description="Replace with a backup"
                   onClick={handleRestoreClick}
-                  className="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-900/40"
-                >
-                  <span className="font-medium text-slate-100">
-                    Restore notes
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Replace with a backup
-                  </span>
-                </button>
+                />
               </div>
               <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -1120,18 +1059,11 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                       Upload changes when you leave the tab or window.
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={isUploadEnabled}
-                      disabled={!isUploadUrlValid}
-                      onChange={(event) =>
-                        setIsUploadEnabled(event.target.checked)
-                      }
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-500"
-                    />
-                    Enable
-                  </label>
+                  <SettingsCheckbox
+                    checked={isUploadEnabled}
+                    disabled={!isUploadUrlValid}
+                    onChange={setIsUploadEnabled}
+                  />
                 </div>
                 <div className="mt-3">
                   <label
@@ -1140,12 +1072,12 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                   >
                     Server URL
                   </label>
-                  <input
+                  <TextInput
                     id="upload-url"
                     value={uploadUrl}
                     onChange={(event) => setUploadUrl(event.target.value)}
                     placeholder="https://example.com/api/notes/export"
-                    className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-indigo-400"
+                    className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
                   />
                   {!isUploadUrlValid ? (
                     <p className="mt-2 text-xs text-slate-500">
@@ -1169,17 +1101,10 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                       Reloads the page after inactivity to re-lock the vault.
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={isInactivityEnabled}
-                      onChange={(event) =>
-                        setIsInactivityEnabled(event.target.checked)
-                      }
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-500"
-                    />
-                    Enable
-                  </label>
+                  <SettingsCheckbox
+                    checked={isInactivityEnabled}
+                    onChange={setIsInactivityEnabled}
+                  />
                 </div>
                 <div className="mt-3">
                   <label
@@ -1188,7 +1113,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                   >
                     Inactivity minutes
                   </label>
-                  <input
+                  <TextInput
                     id="inactivity-minutes"
                     type="number"
                     min={1}
@@ -1202,7 +1127,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                       );
                     }}
                     disabled={!isInactivityEnabled}
-                    className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-indigo-400 disabled:opacity-60"
+                    className="mt-2 w-full px-3 py-2 text-xs text-slate-200 disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -1241,12 +1166,12 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
               >
                 Vault password
               </label>
-              <input
+              <TextInput
                 id="restore-password"
                 type="password"
                 value={restorePassword}
                 onChange={(event) => setRestorePassword(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-indigo-400"
+                className="mt-2 w-full px-3 py-2 text-sm text-slate-200"
               />
               {restoreError ? (
                 <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">

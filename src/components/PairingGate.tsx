@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TextInput } from "./TextInput";
 
 interface PairingGateProps {
   onUnlock: (password: string) => Promise<void>;
@@ -43,7 +44,7 @@ export function PairingGate({
           <label className="text-xs text-slate-400" htmlFor="vault-password">
             Password
           </label>
-          <input
+          <TextInput
             ref={inputRef}
             id="vault-password"
             type="password"
@@ -51,7 +52,7 @@ export function PairingGate({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={isUnlocking}
-            className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-indigo-400"
+            className="mt-2 w-full px-3 py-2 text-sm text-slate-200"
           />
           {message ? (
             <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
