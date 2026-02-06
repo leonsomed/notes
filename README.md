@@ -1,1 +1,1 @@
-Simple personal notes app. A simple solution for privacy focused individuals who do not want to share their notes with big tech. The app stores data in IndexDB and syncs encrypted snapshots to external storage.
+Simple personal notes app. A simple solution for privacy focused individuals who do not want to share their notes with big tech. The app stores data in IndexDB and syncs encrypted snapshots to external storage such as https://github.com/leonsomed/notes-export-server
