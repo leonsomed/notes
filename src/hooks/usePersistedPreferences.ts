@@ -5,8 +5,10 @@ const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
 const UPLOAD_URL_KEY = "notes:uploadUrl";
 const UPLOAD_NODE_NAME_KEY = "notes:uploadNodeName";
 const UPLOAD_ENABLED_KEY = "notes:uploadEnabled";
+const UPLOAD_AUTH_TOKEN_KEY = "notes:uploadAuthToken";
 const RESTORE_UPLOAD_URL_KEY = "notes:restoreUploadUrl";
 const RESTORE_NODE_NAME_KEY = "notes:restoreNodeName";
+const RESTORE_AUTH_TOKEN_KEY = "notes:restoreAuthToken";
 const INACTIVITY_ENABLED_KEY = "notes:inactivityEnabled";
 const INACTIVITY_MINUTES_KEY = "notes:inactivityMinutes";
 export const DEFAULT_INACTIVITY_MINUTES = 15;
@@ -40,11 +42,17 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
   const [isUploadEnabled, setIsUploadEnabled] = useState(
     () => localStorage.getItem(UPLOAD_ENABLED_KEY) === "true",
   );
+  const [uploadAuthToken, setUploadAuthToken] = useState(
+    () => localStorage.getItem(UPLOAD_AUTH_TOKEN_KEY) ?? "",
+  );
   const [restoreUploadUrl, setRestoreUploadUrl] = useState(
     () => localStorage.getItem(RESTORE_UPLOAD_URL_KEY) ?? "",
   );
   const [restoreNodeName, setRestoreNodeName] = useState(
     () => localStorage.getItem(RESTORE_NODE_NAME_KEY) ?? "",
+  );
+  const [restoreAuthToken, setRestoreAuthToken] = useState(
+    () => localStorage.getItem(RESTORE_AUTH_TOKEN_KEY) ?? "",
   );
   const [isInactivityEnabled, setIsInactivityEnabled] = useState(
     () => localStorage.getItem(INACTIVITY_ENABLED_KEY) === "true",
@@ -72,11 +80,17 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
     localStorage.setItem(UPLOAD_ENABLED_KEY, String(isUploadEnabled));
   }, [isUploadEnabled]);
   useEffect(() => {
+    localStorage.setItem(UPLOAD_AUTH_TOKEN_KEY, uploadAuthToken);
+  }, [uploadAuthToken]);
+  useEffect(() => {
     localStorage.setItem(RESTORE_UPLOAD_URL_KEY, restoreUploadUrl);
   }, [restoreUploadUrl]);
   useEffect(() => {
     localStorage.setItem(RESTORE_NODE_NAME_KEY, restoreNodeName);
   }, [restoreNodeName]);
+  useEffect(() => {
+    localStorage.setItem(RESTORE_AUTH_TOKEN_KEY, restoreAuthToken);
+  }, [restoreAuthToken]);
   useEffect(() => {
     localStorage.setItem(INACTIVITY_ENABLED_KEY, String(isInactivityEnabled));
   }, [isInactivityEnabled]);
@@ -93,10 +107,14 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
     setUploadNodeName,
     isUploadEnabled,
     setIsUploadEnabled,
+    uploadAuthToken,
+    setUploadAuthToken,
     restoreUploadUrl,
     setRestoreUploadUrl,
     restoreNodeName,
     setRestoreNodeName,
+    restoreAuthToken,
+    setRestoreAuthToken,
     isInactivityEnabled,
     setIsInactivityEnabled,
     inactivityMinutes,

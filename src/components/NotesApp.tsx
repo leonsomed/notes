@@ -52,10 +52,14 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     setUploadNodeName,
     isUploadEnabled,
     setIsUploadEnabled,
+    uploadAuthToken,
+    setUploadAuthToken,
     restoreUploadUrl,
     setRestoreUploadUrl,
     restoreNodeName,
     setRestoreNodeName,
+    restoreAuthToken,
+    setRestoreAuthToken,
     isInactivityEnabled,
     setIsInactivityEnabled,
     inactivityMinutes,
@@ -170,6 +174,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
 
   const trimmedUploadUrl = uploadUrl.trim();
   const trimmedUploadNodeName = uploadNodeName.trim();
+  const trimmedUploadAuthToken = uploadAuthToken.trim();
   const isUploadUrlValid = useMemo(() => {
     if (!trimmedUploadUrl) return false;
     try {
@@ -184,6 +189,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     [trimmedUploadNodeName],
   );
   const trimmedRestoreUploadUrl = restoreUploadUrl.trim();
+  const trimmedRestoreAuthToken = restoreAuthToken.trim();
   const isRestoreUploadUrlValid = useMemo(() => {
     if (!trimmedRestoreUploadUrl) return false;
     try {
@@ -204,11 +210,15 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     setShowUploadFailureBanner(false);
     try {
       const payload = await getEncryptedVaultRecord();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (trimmedUploadAuthToken) {
+        headers.Authorization = `Bearer ${trimmedUploadAuthToken}`;
+      }
       const response = await fetch(trimmedUploadUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ nodeName: trimmedUploadNodeName, ...payload }),
       });
 
@@ -218,14 +228,13 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
       setHasUploadChanges(false);
     } catch (e) {
       console.error(e);
-      if (e instanceof TypeError) {
-        setShowUploadFailureBanner(true);
-      }
+      setShowUploadFailureBanner(true);
     }
   }, [
     flushPendingSave,
     isUploadNodeNameValid,
     isUploadUrlValid,
+    trimmedUploadAuthToken,
     trimmedUploadNodeName,
     trimmedUploadUrl,
   ]);
@@ -296,8 +305,13 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
 
     const loadNodes = async () => {
       try {
+        const headers: Record<string, string> = {};
+        if (trimmedRestoreAuthToken) {
+          headers.Authorization = `Bearer ${trimmedRestoreAuthToken}`;
+        }
         const response = await fetch(trimmedRestoreUploadUrl, {
           signal: controller.signal,
+          headers,
         });
         if (!response.ok) {
           throw new Error(`Restore node fetch failed: ${response.status}`);
@@ -337,7 +351,12 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
       isActive = false;
       controller.abort();
     };
-  }, [isRestoreUploadUrlValid, setRestoreNodeName, trimmedRestoreUploadUrl]);
+  }, [
+    isRestoreUploadUrlValid,
+    setRestoreNodeName,
+    trimmedRestoreAuthToken,
+    trimmedRestoreUploadUrl,
+  ]);
   useEffect(() => {
     if (!isUploadEnabled) return;
     const handleWindowBlur = () => {
@@ -506,7 +525,11 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     try {
       const url = new URL(trimmedRestoreUploadUrl);
       url.searchParams.set("name", restoreNodeName);
-      const response = await fetch(url.toString());
+      const headers: Record<string, string> = {};
+      if (trimmedRestoreAuthToken) {
+        headers.Authorization = `Bearer ${trimmedRestoreAuthToken}`;
+      }
+      const response = await fetch(url.toString(), { headers });
       if (!response.ok) {
         throw new Error(`Restore fetch failed: ${response.status}`);
       }
@@ -878,6 +901,8 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
           onUploadNodeNameChange={setUploadNodeName}
           isUploadEnabled={isUploadEnabled}
           onUploadEnabledChange={setIsUploadEnabled}
+          uploadAuthToken={uploadAuthToken}
+          onUploadAuthTokenChange={setUploadAuthToken}
           isUploadUrlValid={isUploadUrlValid}
           isUploadNodeNameValid={isUploadNodeNameValid}
           hasUploadChanges={hasUploadChanges}
@@ -892,6 +917,8 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
           isRestoreUploadUrlValid={isRestoreUploadUrlValid}
           isRestoreNodesLoading={isRestoreNodesLoading}
           restoreNodesError={restoreNodesError}
+          restoreAuthToken={restoreAuthToken}
+          onRestoreAuthTokenChange={setRestoreAuthToken}
           onRestoreUpload={handleRestoreUpload}
           isRestoreUploadBusy={isRestoreUploadBusy}
           isInactivityEnabled={isInactivityEnabled}

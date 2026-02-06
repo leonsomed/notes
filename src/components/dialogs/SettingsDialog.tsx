@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActionButton } from "../base/ActionButton";
 import { Checkbox } from "../base/Checkbox";
 import { IconButton } from "../base/IconButton";
@@ -28,6 +28,8 @@ interface SettingsDialogProps {
   onUploadNodeNameChange: (value: string) => void;
   isUploadEnabled: boolean;
   onUploadEnabledChange: (value: boolean) => void;
+  uploadAuthToken: string;
+  onUploadAuthTokenChange: (value: string) => void;
   isUploadUrlValid: boolean;
   isUploadNodeNameValid: boolean;
   hasUploadChanges: boolean;
@@ -40,6 +42,8 @@ interface SettingsDialogProps {
   isRestoreUploadUrlValid: boolean;
   isRestoreNodesLoading: boolean;
   restoreNodesError: string | null;
+  restoreAuthToken: string;
+  onRestoreAuthTokenChange: (value: string) => void;
   onRestoreUpload: () => void;
   isRestoreUploadBusy: boolean;
   isInactivityEnabled: boolean;
@@ -68,6 +72,8 @@ export function SettingsDialog({
   onUploadNodeNameChange,
   isUploadEnabled,
   onUploadEnabledChange,
+  uploadAuthToken,
+  onUploadAuthTokenChange,
   isUploadUrlValid,
   isUploadNodeNameValid,
   hasUploadChanges,
@@ -80,6 +86,8 @@ export function SettingsDialog({
   isRestoreUploadUrlValid,
   isRestoreNodesLoading,
   restoreNodesError,
+  restoreAuthToken,
+  onRestoreAuthTokenChange,
   onRestoreUpload,
   isRestoreUploadBusy,
   isInactivityEnabled,
@@ -87,9 +95,18 @@ export function SettingsDialog({
   inactivityMinutes,
   onInactivityMinutesChange,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<"security" | "backups">(
-    "security",
-  );
+  const [activeTab, setActiveTab] = useState<"security" | "backups">("backups");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -314,6 +331,22 @@ export function SettingsDialog({
                   Enter a valid URL to enable uploads.
                 </p>
               ) : null}
+              <label
+                className="mt-3 block text-xs text-slate-400"
+                htmlFor="upload-auth-token"
+              >
+                Auth token
+              </label>
+              <TextInput
+                id="upload-auth-token"
+                type="password"
+                value={uploadAuthToken}
+                onChange={(event) =>
+                  onUploadAuthTokenChange(event.target.value)
+                }
+                placeholder="Bearer token"
+                className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
+              />
               {isUploadEnabled && hasUploadChanges ? (
                 <p className="mt-2 text-xs text-slate-500">
                   Changes will upload when you leave the tab or window.
@@ -352,6 +385,22 @@ export function SettingsDialog({
                   Enter a valid URL to load nodes.
                 </p>
               ) : null}
+              <label
+                className="mt-3 block text-xs text-slate-400"
+                htmlFor="restore-auth-token"
+              >
+                Auth token
+              </label>
+              <TextInput
+                id="restore-auth-token"
+                type="password"
+                value={restoreAuthToken}
+                onChange={(event) =>
+                  onRestoreAuthTokenChange(event.target.value)
+                }
+                placeholder="Bearer token"
+                className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
+              />
               <label
                 className="mt-3 block text-xs text-slate-400"
                 htmlFor="restore-node-name"
