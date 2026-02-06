@@ -87,3 +87,16 @@ export async function decryptPayload<T>(
   const decoded = decoder.decode(plaintext);
   return JSON.parse(decoded) as T;
 }
+
+export const isValidEncryptedRecord = (
+  value: unknown,
+): value is EncryptedVaultRecord => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as EncryptedVaultRecord;
+  return (
+    typeof record.version === "number" &&
+    typeof record.salt === "string" &&
+    typeof record.iv === "string" &&
+    typeof record.ciphertext === "string"
+  );
+};
