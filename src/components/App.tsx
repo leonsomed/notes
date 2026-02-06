@@ -617,12 +617,8 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
     const normalizedTag = normalizeTag(value);
     if (!normalizedTag) return;
 
-    const nextKey = tagKey(normalizedTag);
-    const existingKeys = new Set(
-      selectedDocument.tags.map((tag) => tagKey(tag)),
-    );
-    if (existingKeys.has(nextKey)) {
-      setDraftTag("");
+    if (selectedDocument.tags.includes(normalizedTag)) {
+      alert("Tag already exists");
       return;
     }
 
@@ -632,7 +628,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
         doc.id === selectedDocument.id ? { ...doc, tags: nextTags } : doc,
       ),
     );
-    setDraftTag("");
     markUploadDirty();
 
     try {

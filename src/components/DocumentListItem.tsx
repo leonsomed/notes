@@ -1,4 +1,5 @@
 import type { NoteDocument } from "../services/notesDb";
+import { TagPill } from "./TagPill";
 
 interface DocumentListItemProps {
   document: NoteDocument;
@@ -35,12 +36,7 @@ export function DocumentListItem({
       <span className="flex flex-wrap gap-1 text-xs text-slate-400">
         {document.tags.length > 0 ? (
           document.tags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-slate-800 bg-slate-900/50 px-2 py-0.5"
-            >
-              {tag}
-            </span>
+            <TagPill key={tag} tag={tag} variant="list" />
           ))
         ) : (
           <span className="italic text-slate-500">No tags</span>

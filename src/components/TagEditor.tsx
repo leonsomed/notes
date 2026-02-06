@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextInput } from "./TextInput";
+import { TagPill } from "./TagPill";
 import { normalizeTag, tagKey } from "../utils/tags";
 
 interface TagEditorProps {
@@ -48,22 +49,12 @@ export function TagEditor({
     <div className="mt-4 flex flex-wrap items-center gap-2">
       {tags.length > 0 ? (
         tags.map((tag) => (
-          <span
+          <TagPill
             key={tag}
-            className="flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/40 px-2 py-1 text-xs text-slate-300"
-          >
-            {tag}
-            <button
-              type="button"
-              onClick={() => {
-                void onRemoveTag(tag);
-              }}
-              className="rounded-full px-1 text-slate-500 transition hover:text-rose-300"
-              aria-label={`Remove ${tag} tag`}
-            >
-              ×
-            </button>
-          </span>
+            tag={tag}
+            variant="editor"
+            onRemove={onRemoveTag}
+          />
         ))
       ) : (
         <span className="text-xs text-slate-500">No tags yet.</span>
