@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type DialogSize = "sm" | "md";
+type DialogSize = "sm" | "md" | "lg";
 type DialogZIndex = 40 | 50;
 
 interface DialogProps {
@@ -13,6 +13,7 @@ interface DialogProps {
 const sizeClassNames: Record<DialogSize, string> = {
   sm: "max-w-sm",
   md: "max-w-md",
+  lg: "max-w-4xl",
 };
 
 const zIndexClassNames: Record<DialogZIndex, string> = {
