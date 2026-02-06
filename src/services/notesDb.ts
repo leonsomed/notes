@@ -1,4 +1,6 @@
 import type { PartialBlock } from "@blocknote/core";
+import { decryptPayload, encryptPayload } from "./crypto";
+import type { EncryptedVaultRecord } from "./crypto";
 
 const DB_NAME = "notes-db";
 const DB_VERSION = 2;
@@ -10,8 +12,6 @@ const VAULT_KEY = "payload";
 const CURRENT_VERSION = 1;
 const DEFAULT_TITLE = "Untitled";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 interface StoredDocument {
   version: number;
@@ -28,13 +28,6 @@ interface StoredUpload {
   size: number;
   createdAt: number;
   data: Blob;
-}
-
-export interface EncryptedVaultRecord {
-  version: number;
-  salt: string;
-  iv: string;
-  ciphertext: string;
 }
 
 export interface NoteDocument extends StoredDocument {
@@ -76,26 +69,6 @@ function openNotesDb(): Promise<IDBDatabase> {
   });
 }
 
-const bufferToBase64 = (buffer: ArrayBuffer) => {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-};
-
-const base64ToBuffer = (base64: string) => {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-};
-
 const createEmptyPayload = (): ExportedNotesPayload => ({
   version: CURRENT_VERSION,
   exportedAt: Date.now(),
@@ -109,64 +82,11 @@ const requireUnlocked = () => {
   }
 };
 
-async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>) {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations: 250000,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-async function encryptPayload(
-  password: string,
-  payload: ExportedNotesPayload,
-): Promise<EncryptedVaultRecord> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(password, salt);
-  const data = encoder.encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    data,
-  );
-  return {
-    version: 1,
-    salt: bufferToBase64(salt.buffer),
-    iv: bufferToBase64(iv.buffer),
-    ciphertext: bufferToBase64(ciphertext),
-  };
-}
-
-async function decryptPayload(
+async function decryptPayloadWithType(
   password: string,
   record: EncryptedVaultRecord,
 ): Promise<ExportedNotesPayload> {
-  const salt = new Uint8Array(base64ToBuffer(record.salt));
-  const iv = new Uint8Array(base64ToBuffer(record.iv));
-  const ciphertext = base64ToBuffer(record.ciphertext);
-  const key = await deriveKey(password, salt);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ciphertext,
-  );
-  const decoded = decoder.decode(plaintext);
-  return JSON.parse(decoded) as ExportedNotesPayload;
+  return decryptPayload<ExportedNotesPayload>(password, record);
 }
 
 async function readVaultRecord(): Promise<EncryptedVaultRecord | null> {
@@ -318,7 +238,7 @@ export async function initializeVault(
   const existing = await readVaultRecord();
   if (existing) {
     try {
-      const decrypted = await decryptPayload(password, existing);
+      const decrypted = await decryptPayloadWithType(password, existing);
       cachedVault = decrypted;
       return decrypted;
     } catch (error) {
@@ -342,7 +262,7 @@ export async function restoreEncryptedVault(
   password: string,
   record: EncryptedVaultRecord,
 ): Promise<ExportedNotesPayload> {
-  const decrypted = await decryptPayload(password, record);
+  const decrypted = await decryptPayloadWithType(password, record);
   sessionPassword = password;
   cachedVault = decrypted;
   await writeVaultRecord(record);
