@@ -138,6 +138,11 @@ export async function getEncryptedVaultRecord(): Promise<EncryptedVaultRecord> {
   return record;
 }
 
+export async function hasEncryptedVault(): Promise<boolean> {
+  const record = await readVaultRecord();
+  return Boolean(record);
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

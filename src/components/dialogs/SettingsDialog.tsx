@@ -183,7 +183,10 @@ export function SettingsDialog({
             />
           </div>
           <div className="mt-3">
-            <label className="text-xs text-slate-400" htmlFor="upload-node-name">
+            <label
+              className="text-xs text-slate-400"
+              htmlFor="upload-node-name"
+            >
               Node name
             </label>
             <TextInput
@@ -242,7 +245,7 @@ export function SettingsDialog({
               value={restoreUploadUrl}
               onChange={(event) => onRestoreUploadUrlChange(event.target.value)}
               onBlur={onRestoreUploadUrlCommit}
-              placeholder="https://example.com/api/notes/node-names"
+              placeholder="https://example.com/api/notes/export/node-names"
               className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
             />
             {!isRestoreUploadUrlValid && restoreUploadUrl.trim() ? (
@@ -260,7 +263,9 @@ export function SettingsDialog({
               id="restore-node-name"
               value={restoreNodeName}
               onChange={(event) => onRestoreNodeNameChange(event.target.value)}
-              disabled={isRestoreNodesLoading || restoreNodeOptions.length === 0}
+              disabled={
+                isRestoreNodesLoading || restoreNodeOptions.length === 0
+              }
               className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 disabled:opacity-60"
             >
               {restoreNodeOptions.map((node) => (
@@ -319,7 +324,9 @@ export function SettingsDialog({
                 id="change-password-current"
                 type="password"
                 value={changePasswordCurrent}
-                onChange={(event) => onChangePasswordCurrent(event.target.value)}
+                onChange={(event) =>
+                  onChangePasswordCurrent(event.target.value)
+                }
                 className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
               />
             </div>
@@ -349,7 +356,9 @@ export function SettingsDialog({
                 id="change-password-confirm"
                 type="password"
                 value={changePasswordConfirm}
-                onChange={(event) => onChangePasswordConfirm(event.target.value)}
+                onChange={(event) =>
+                  onChangePasswordConfirm(event.target.value)
+                }
                 className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
               />
             </div>

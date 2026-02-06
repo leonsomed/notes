@@ -81,9 +81,8 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     null,
   );
   const [isRestoreUploadBusy, setIsRestoreUploadBusy] = useState(false);
-  const [restoreUploadUrlDraft, setRestoreUploadUrlDraft] = useState(
-    restoreUploadUrl,
-  );
+  const [restoreUploadUrlDraft, setRestoreUploadUrlDraft] =
+    useState(restoreUploadUrl);
   const [changePasswordCurrent, setChangePasswordCurrent] = useState("");
   const [changePasswordNext, setChangePasswordNext] = useState("");
   const [changePasswordConfirm, setChangePasswordConfirm] = useState("");
@@ -303,13 +302,8 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
         if (!response.ok) {
           throw new Error(`Restore node fetch failed: ${response.status}`);
         }
-        const payload = (await response.json()) as unknown;
-        const rawNodes = Array.isArray(payload)
-          ? payload
-          : Array.isArray((payload as { nodes?: unknown }).nodes)
-            ? (payload as { nodes?: unknown }).nodes
-            : [];
-        const normalizedNodes = rawNodes
+        const nodes = (await response.json()) as string[];
+        const normalizedNodes = nodes
           .filter((node): node is string => typeof node === "string")
           .map((node) => node.trim())
           .filter(Boolean);
@@ -343,11 +337,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
       isActive = false;
       controller.abort();
     };
-  }, [
-    isRestoreUploadUrlValid,
-    setRestoreNodeName,
-    trimmedRestoreUploadUrl,
-  ]);
+  }, [isRestoreUploadUrlValid, setRestoreNodeName, trimmedRestoreUploadUrl]);
   useEffect(() => {
     if (!isUploadEnabled) return;
     const handleWindowBlur = () => {
@@ -564,7 +554,9 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
       setHasUploadChanges(true);
     } catch (e) {
       console.error(e);
-      setChangePasswordError("Unable to update password. Check your current one.");
+      setChangePasswordError(
+        "Unable to update password. Check your current one.",
+      );
     } finally {
       setIsChangePasswordBusy(false);
     }
