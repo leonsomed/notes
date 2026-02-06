@@ -1,5 +1,6 @@
 import { ActionButton } from "../base/ActionButton";
 import { Checkbox } from "../base/Checkbox";
+import { IconButton } from "../base/IconButton";
 import { TextInput } from "../base/TextInput";
 import { Dialog } from "../base/Dialog";
 import { DEFAULT_INACTIVITY_MINUTES } from "../../hooks/usePersistedPreferences";
@@ -48,14 +49,11 @@ export function SettingsDialog({
         >
           Settings
         </h2>
-        <button
-          type="button"
+        <IconButton
           onClick={onClose}
-          className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:text-slate-200"
-          aria-label="Close settings"
-        >
-          ×
-        </button>
+          className="px-2 py-1 text-sm text-slate-400 hover:text-slate-200"
+          ariaLabel="Close settings"
+        />
       </div>
       <p className="mt-2 text-sm text-slate-300">
         Manage your data exports and restores.

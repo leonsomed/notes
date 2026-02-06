@@ -1,3 +1,5 @@
+import { IconButton } from "./IconButton";
+
 interface TagPillProps {
   tag: string;
   variant?: "editor" | "list";
@@ -28,16 +30,13 @@ export function TagPill({
     <span className={classes}>
       <span>{tag}</span>
       {onRemove ? (
-        <button
-          type="button"
+        <IconButton
           onClick={() => {
             void onRemove(tag);
           }}
-          className="rounded-full px-1 text-slate-500 transition hover:text-rose-300"
-          aria-label={`Remove ${tag} tag`}
-        >
-          ×
-        </button>
+          className="px-1 text-slate-500 hover:text-rose-300"
+          ariaLabel={`Remove ${tag} tag`}
+        />
       ) : null}
     </span>
   );

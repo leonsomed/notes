@@ -8,6 +8,7 @@ import {
   type NoteDocument,
 } from "../services/notesDb";
 import { DocumentListItem } from "./base/DocumentListItem";
+import { IconButton } from "./base/IconButton";
 import { NoteDocumentEditor } from "./base/NoteDocumentEditor";
 import { TagEditor } from "./base/TagEditor";
 import { TextInput } from "./base/TextInput";
@@ -552,14 +553,11 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
               aria-label="Search notes or tag:my-tag"
             />
             {searchQuery ? (
-              <button
-                type="button"
+              <IconButton
                 onClick={() => setSearchQuery("")}
-                className="rounded-full px-1 text-slate-500 transition hover:text-slate-200"
-                aria-label="Clear search"
-              >
-                ×
-              </button>
+                className="px-1 text-slate-500 hover:text-slate-200"
+                ariaLabel="Clear search"
+              />
             ) : null}
           </div>
 
