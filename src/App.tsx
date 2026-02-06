@@ -18,6 +18,8 @@ const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
 const tagKey = (value: string) => normalizeTag(value).toLowerCase();
 
 const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
+const UPLOAD_URL_KEY = "notes:uploadUrl";
+const UPLOAD_ENABLED_KEY = "notes:uploadEnabled";
 const SAVE_DEBOUNCE_MS = 500;
 
 const getLatestDocumentId = (docs: NoteDocument[]) => {
@@ -169,9 +171,19 @@ function App() {
   const [isTagInputFocused, setIsTagInputFocused] = useState(false);
   const [activeTagIndex, setActiveTagIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [uploadUrl, setUploadUrl] = useState(
+    () => localStorage.getItem(UPLOAD_URL_KEY) ?? "",
+  );
+  const [isUploadEnabled, setIsUploadEnabled] = useState(
+    () => localStorage.getItem(UPLOAD_ENABLED_KEY) === "true",
+  );
+  const [hasUploadChanges, setHasUploadChanges] = useState(false);
+  const [showUploadFailureBanner, setShowUploadFailureBanner] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadInFlightRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<{
     id: number;
@@ -202,6 +214,9 @@ function App() {
     },
     [flushPendingSave],
   );
+  const markUploadDirty = useCallback(() => {
+    setHasUploadChanges(true);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -238,6 +253,7 @@ function App() {
       const stored = await addDocument();
       setDocuments((prev) => [stored, ...prev]);
       setSelectedDocumentId(stored.id);
+      markUploadDirty();
     } catch (e) {
       console.error(e);
       setErrorMessage("Unable to save document.");
@@ -252,6 +268,7 @@ function App() {
         if (prev !== id) return prev;
         return documents.find((doc) => doc.id !== id)?.id ?? null;
       });
+      markUploadDirty();
     } catch (e) {
       console.error(e);
       setErrorMessage("Unable to delete document.");
@@ -269,10 +286,60 @@ function App() {
     setPendingDeleteId(null);
   };
 
+  const trimmedUploadUrl = uploadUrl.trim();
+  const isUploadUrlValid = useMemo(() => {
+    if (!trimmedUploadUrl) return false;
+    try {
+      const url = new URL(trimmedUploadUrl);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, [trimmedUploadUrl]);
+
   const selectedDocument = useMemo(
     () => documents.find((doc) => doc.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
   );
+  const handleUpload = useCallback(async () => {
+    if (!isUploadUrlValid) return;
+    flushPendingSave();
+    setShowUploadFailureBanner(false);
+    try {
+      const payload = await exportDatabase();
+      const response = await fetch(trimmedUploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+      setHasUploadChanges(false);
+    } catch (e) {
+      console.error(e);
+      if (e instanceof TypeError) {
+        setShowUploadFailureBanner(true);
+      }
+    }
+  }, [flushPendingSave, isUploadUrlValid, trimmedUploadUrl]);
+
+  const runUpload = useCallback(async () => {
+    if (uploadInFlightRef.current) return;
+    uploadInFlightRef.current = true;
+    await handleUpload();
+    uploadInFlightRef.current = false;
+  }, [handleUpload]);
+
+  const uploadIfNeeded = useCallback(async () => {
+    if (!isUploadEnabled) return;
+    if (!hasUploadChanges) return;
+    if (!isUploadUrlValid) return;
+    await runUpload();
+  }, [hasUploadChanges, isUploadEnabled, isUploadUrlValid, runUpload]);
 
   useEffect(() => {
     if (selectedDocumentId) {
@@ -283,6 +350,12 @@ function App() {
     }
   }, [selectedDocumentId]);
   useEffect(() => {
+    localStorage.setItem(UPLOAD_URL_KEY, uploadUrl);
+  }, [uploadUrl]);
+  useEffect(() => {
+    localStorage.setItem(UPLOAD_ENABLED_KEY, String(isUploadEnabled));
+  }, [isUploadEnabled]);
+  useEffect(() => {
     return () => {
       if (saveTimeoutRef.current !== null) {
         window.clearTimeout(saveTimeoutRef.current);
@@ -291,6 +364,38 @@ function App() {
       flushPendingSave();
     };
   }, [flushPendingSave]);
+  useEffect(() => {
+    if (isUploadEnabled && !isUploadUrlValid) {
+      setIsUploadEnabled(false);
+    }
+  }, [isUploadEnabled, isUploadUrlValid]);
+  useEffect(() => {
+    if (!hasUploadChanges) {
+      setShowUploadFailureBanner(false);
+    }
+  }, [hasUploadChanges]);
+  useEffect(() => {
+    if (!isUploadEnabled) return;
+    const handleWindowBlur = () => {
+      uploadIfNeeded();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        uploadIfNeeded();
+      }
+    };
+    const handleBeforeUnload = () => {
+      uploadIfNeeded();
+    };
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isUploadEnabled, uploadIfNeeded]);
 
   const handleExport = async () => {
     flushPendingSave();
@@ -347,6 +452,7 @@ function App() {
       setPendingDeleteId(null);
       setSearchQuery("");
       setErrorMessage(null);
+      markUploadDirty();
     } catch (e) {
       console.error(e);
       setErrorMessage("Unable to restore notes.");
@@ -462,6 +568,7 @@ function App() {
         doc.id === selectedDocument.id ? { ...doc, title: nextTitle } : doc,
       ),
     );
+    markUploadDirty();
 
     try {
       await updateDocument(selectedDocument.id, {
@@ -495,6 +602,7 @@ function App() {
       ),
     );
     setDraftTag("");
+    markUploadDirty();
 
     try {
       await updateDocument(selectedDocument.id, {
@@ -515,6 +623,7 @@ function App() {
         doc.id === selectedDocument.id ? { ...doc, tags: nextTags } : doc,
       ),
     );
+    markUploadDirty();
 
     try {
       await updateDocument(selectedDocument.id, {
@@ -527,8 +636,49 @@ function App() {
     }
   };
 
+  const shouldShowConfigBanner =
+    hasUploadChanges && (!isUploadUrlValid || !isUploadEnabled);
+  const shouldShowUploadFailureBanner =
+    !shouldShowConfigBanner &&
+    showUploadFailureBanner &&
+    hasUploadChanges &&
+    isUploadUrlValid;
+
   return (
     <div className="min-h-screen min-w-[320px] bg-slate-950 text-white">
+      {shouldShowConfigBanner ? (
+        <div className="sticky top-0 z-50 border-b border-amber-200/60 bg-amber-400 px-6 py-4 text-slate-900 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em]">
+              You have not configured an upload server. Your changes are only
+              saved in this browser.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:bg-slate-800"
+            >
+              Add server
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {shouldShowUploadFailureBanner ? (
+        <div className="sticky top-0 z-50 border-b border-amber-200/60 bg-amber-400 px-6 py-4 text-slate-900 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em]">
+              Server unreachable. You have changes that have not been pushed.
+            </p>
+            <button
+              type="button"
+              onClick={runUpload}
+              className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:bg-slate-800"
+            >
+              Upload now
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="flex min-h-screen">
         <aside className="w-72 border-r border-slate-900 bg-slate-950/60 px-4 py-6">
           <div className="flex items-center justify-between">
@@ -542,38 +692,31 @@ function App() {
                   : `${filteredDocuments.length} of ${documents.length}`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddDocument}
-              className="rounded-full bg-indigo-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-indigo-400"
-            >
-              New
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                onClick={handleAddDocument}
+                className="rounded-full bg-indigo-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-indigo-400"
+              >
+                New
+              </button>
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleExport}
-              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
-            >
-              Export
-            </button>
-            <button
-              type="button"
-              onClick={handleRestoreClick}
-              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
-            >
-              Restore
-            </button>
-            <input
-              ref={restoreInputRef}
-              type="file"
-              accept="application/json"
-              onChange={handleRestoreSelected}
-              className="hidden"
-              aria-hidden="true"
-            />
-          </div>
+          <input
+            ref={restoreInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleRestoreSelected}
+            className="hidden"
+            aria-hidden="true"
+          />
 
           {errorMessage ? (
             <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
@@ -820,6 +963,7 @@ function App() {
                       ...selectedDocument,
                       content: blocks,
                     });
+                    markUploadDirty();
                   }}
                 />
               </div>
@@ -864,6 +1008,120 @@ function App() {
                   className="rounded-full border border-rose-500 bg-rose-500/10 px-4 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
                 >
                   Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {isSettingsOpen ? (
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-dialog-title"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h2
+                  id="settings-dialog-title"
+                  className="text-base font-semibold text-slate-100"
+                >
+                  Settings
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:text-slate-200"
+                  aria-label="Close settings"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-slate-300">
+                Manage your data exports and restores.
+              </p>
+              <div className="mt-4 grid gap-3">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-900/40"
+                >
+                  <span className="font-medium text-slate-100">
+                    Export notes
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Download a JSON backup
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestoreClick}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-900/40"
+                >
+                  <span className="font-medium text-slate-100">
+                    Restore notes
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Replace with a backup
+                  </span>
+                </button>
+              </div>
+              <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">
+                      Background upload
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Upload changes when you leave the tab or window.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={isUploadEnabled}
+                      disabled={!isUploadUrlValid}
+                      onChange={(event) =>
+                        setIsUploadEnabled(event.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-500"
+                    />
+                    Enable
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <label
+                    className="text-xs text-slate-400"
+                    htmlFor="upload-url"
+                  >
+                    Server URL
+                  </label>
+                  <input
+                    id="upload-url"
+                    value={uploadUrl}
+                    onChange={(event) => setUploadUrl(event.target.value)}
+                    placeholder="https://example.com/api/notes/export"
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-indigo-400"
+                  />
+                  {!isUploadUrlValid ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Enter a valid URL to enable uploads.
+                    </p>
+                  ) : null}
+                  {isUploadEnabled && hasUploadChanges ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Changes will upload when you leave the tab or window.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
+                >
+                  Done
                 </button>
               </div>
             </div>

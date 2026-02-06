@@ -2,7 +2,7 @@ import type { PartialBlock } from "@blocknote/core";
 
 const DB_NAME = "notes-db";
 const DB_VERSION = 1;
-const STORE_NAME = "notes";
+const NOTES_STORE = "notes";
 const UPLOADS_STORE = "uploads";
 
 function openNotesDb(): Promise<IDBDatabase> {
@@ -11,8 +11,8 @@ function openNotesDb(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { autoIncrement: true });
+      if (!db.objectStoreNames.contains(NOTES_STORE)) {
+        db.createObjectStore(NOTES_STORE, { autoIncrement: true });
       }
       if (!db.objectStoreNames.contains(UPLOADS_STORE)) {
         db.createObjectStore(UPLOADS_STORE, { keyPath: "id" });
@@ -52,8 +52,8 @@ const DEFAULT_TITLE = "Untitled";
 export async function getDocuments(): Promise<NoteDocument[]> {
   const db = await openNotesDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(NOTES_STORE, "readonly");
+    const store = tx.objectStore(NOTES_STORE);
     const getAllRequest = store.getAll();
     const getKeysRequest = store.getAllKeys();
 
@@ -73,8 +73,8 @@ export async function getDocuments(): Promise<NoteDocument[]> {
 export async function addDocument(): Promise<NoteDocument> {
   const db = await openNotesDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(NOTES_STORE, "readwrite");
+    const store = tx.objectStore(NOTES_STORE);
     const createdAt = Date.now();
     const doc = {
       version: CURRENT_VERSION,
@@ -101,8 +101,8 @@ export async function updateDocument(
 ): Promise<void> {
   const db = await openNotesDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(NOTES_STORE, "readwrite");
+    const store = tx.objectStore(NOTES_STORE);
     store.put(
       {
         version: doc.version,
@@ -122,8 +122,8 @@ export async function updateDocument(
 export async function deleteDocument(id: number): Promise<void> {
   const db = await openNotesDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(NOTES_STORE, "readwrite");
+    const store = tx.objectStore(NOTES_STORE);
     store.delete(id);
 
     tx.oncomplete = () => resolve();
@@ -209,30 +209,36 @@ export interface ExportedNotesPayload {
 
 export async function exportDatabase(): Promise<ExportedNotesPayload> {
   const db = await openNotesDb();
-  const docs = await new Promise<NoteDocument[]>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-    const getAllRequest = store.getAll();
-    const getKeysRequest = store.getAllKeys();
-    tx.oncomplete = () => {
-      const documents = (getAllRequest.result as StoredDocument[]).map(
-        (value, index) => ({
-          ...value,
-          id: Number(getKeysRequest.result[index]),
-        }),
-      );
-      resolve(documents);
-    };
-    tx.onerror = () => reject(tx.error);
-  });
+  const hasNotesStore = db.objectStoreNames.contains(NOTES_STORE);
+  const hasUploadsStore = db.objectStoreNames.contains(UPLOADS_STORE);
+  const docs = hasNotesStore
+    ? await new Promise<NoteDocument[]>((resolve, reject) => {
+        const tx = db.transaction(NOTES_STORE, "readonly");
+        const store = tx.objectStore(NOTES_STORE);
+        const getAllRequest = store.getAll();
+        const getKeysRequest = store.getAllKeys();
+        tx.oncomplete = () => {
+          const documents = (getAllRequest.result as StoredDocument[]).map(
+            (value, index) => ({
+              ...value,
+              id: Number(getKeysRequest.result[index]),
+            }),
+          );
+          resolve(documents);
+        };
+        tx.onerror = () => reject(tx.error);
+      })
+    : [];
 
-  const uploads = await new Promise<StoredUpload[]>((resolve, reject) => {
-    const tx = db.transaction(UPLOADS_STORE, "readonly");
-    const store = tx.objectStore(UPLOADS_STORE);
-    const getAllRequest = store.getAll();
-    tx.oncomplete = () => resolve(getAllRequest.result as StoredUpload[]);
-    tx.onerror = () => reject(tx.error);
-  });
+  const uploads = hasUploadsStore
+    ? await new Promise<StoredUpload[]>((resolve, reject) => {
+        const tx = db.transaction(UPLOADS_STORE, "readonly");
+        const store = tx.objectStore(UPLOADS_STORE);
+        const getAllRequest = store.getAll();
+        tx.oncomplete = () => resolve(getAllRequest.result as StoredUpload[]);
+        tx.onerror = () => reject(tx.error);
+      })
+    : [];
 
   const serializedUploads = await Promise.all(
     uploads.map(async (upload) => ({
@@ -269,8 +275,8 @@ export async function restoreDatabase(
 
   const db = await openNotesDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME, UPLOADS_STORE], "readwrite");
-    const notesStore = tx.objectStore(STORE_NAME);
+    const tx = db.transaction([NOTES_STORE, UPLOADS_STORE], "readwrite");
+    const notesStore = tx.objectStore(NOTES_STORE);
     const uploadsStore = tx.objectStore(UPLOADS_STORE);
     notesStore.clear();
     uploadsStore.clear();
