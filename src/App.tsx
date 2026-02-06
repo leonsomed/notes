@@ -5,13 +5,18 @@ import {
   addDocument,
   deleteDocument,
   getDocuments,
+  initializeVault,
+  getEncryptedVaultRecord,
   exportDatabase,
+  restoreEncryptedVault,
   restoreDatabase,
   updateDocument,
   type ExportedNotesPayload,
   type NoteDocument,
+  type EncryptedVaultRecord,
 } from "./notesDb";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
+import { PairingGate } from "./PairingGate";
 
 const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
 
@@ -102,6 +107,19 @@ const isValidPayload = (value: unknown): value is ExportedNotesPayload => {
   });
 };
 
+const isValidEncryptedRecord = (
+  value: unknown,
+): value is EncryptedVaultRecord => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as EncryptedVaultRecord;
+  return (
+    typeof record.version === "number" &&
+    typeof record.salt === "string" &&
+    typeof record.iv === "string" &&
+    typeof record.ciphertext === "string"
+  );
+};
+
 const fuzzyScore = (query: string, text: string) => {
   if (!query || !text) return 0;
   if (text.includes(query)) {
@@ -158,12 +176,21 @@ const scoreDocument = (doc: NoteDocument, tokens: string[]) => {
   return score;
 };
 
-function App() {
-  const [documents, setDocuments] = useState<NoteDocument[]>([]);
+function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
+  const [documents, setDocuments] =
+    useState<NoteDocument[]>(initialDocuments);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
-    null,
+    () => {
+      const storedRaw = sessionStorage.getItem(SELECTED_DOCUMENT_KEY);
+      const parsedId = storedRaw ? Number(storedRaw) : null;
+      const storedId = Number.isFinite(parsedId) ? parsedId : null;
+      const hasStoredSelection =
+        storedId !== null && initialDocuments.some((doc) => doc.id === storedId);
+      const latestId = getLatestDocumentId(initialDocuments);
+      return hasStoredSelection ? storedId : (latestId ?? null);
+    },
   );
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -181,6 +208,11 @@ function App() {
   const [hasUploadChanges, setHasUploadChanges] = useState(false);
   const [showUploadFailureBanner, setShowUploadFailureBanner] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [restoreRecord, setRestoreRecord] =
+    useState<EncryptedVaultRecord | null>(null);
+  const [restorePassword, setRestorePassword] = useState("");
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [isRestoreBusy, setIsRestoreBusy] = useState(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const uploadInFlightRef = useRef(false);
@@ -216,36 +248,6 @@ function App() {
   );
   const markUploadDirty = useCallback(() => {
     setHasUploadChanges(true);
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    getDocuments()
-      .then((data) => {
-        if (isMounted) {
-          setDocuments(data);
-          const storedRaw = sessionStorage.getItem(SELECTED_DOCUMENT_KEY);
-          const parsedId = storedRaw ? Number(storedRaw) : null;
-          const storedId = Number.isFinite(parsedId) ? parsedId : null;
-          const hasStoredSelection =
-            storedId !== null && data.some((doc) => doc.id === storedId);
-          const latestId = getLatestDocumentId(data);
-          setSelectedDocumentId(
-            hasStoredSelection ? storedId : (latestId ?? null),
-          );
-        }
-      })
-      .catch((e) => {
-        console.error(e);
-        if (isMounted) setErrorMessage("Unable to load documents.");
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   const handleAddDocument = async () => {
@@ -306,7 +308,7 @@ function App() {
     flushPendingSave();
     setShowUploadFailureBanner(false);
     try {
-      const payload = await exportDatabase();
+      const payload = await getEncryptedVaultRecord();
       const response = await fetch(trimmedUploadUrl, {
         method: "POST",
         headers: {
@@ -400,7 +402,7 @@ function App() {
   const handleExport = async () => {
     flushPendingSave();
     try {
-      const payload = await exportDatabase();
+      const payload = await getEncryptedVaultRecord();
       const blob = new Blob([JSON.stringify(payload, null, 2)], {
         type: "application/json",
       });
@@ -434,30 +436,55 @@ function App() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as unknown;
-      if (!isValidPayload(parsed)) {
-        setErrorMessage("Invalid export file.");
+      if (!isValidEncryptedRecord(parsed)) {
+        setErrorMessage("Invalid vault export file.");
         return;
       }
       const confirmed = window.confirm(
         "Restore will replace your current notes. Continue?",
       );
       if (!confirmed) return;
+      setRestoreRecord(parsed);
+      setRestorePassword("");
+      setRestoreError(null);
+    } catch (e) {
+      console.error(e);
+      setErrorMessage("Unable to restore notes.");
+    }
+  };
 
+  const handleRestoreCancel = () => {
+    setRestoreRecord(null);
+    setRestorePassword("");
+    setRestoreError(null);
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!restoreRecord) return;
+    const trimmed = restorePassword.trim();
+    if (!trimmed) {
+      setRestoreError("Enter the vault password to decrypt this export.");
+      return;
+    }
+    setIsRestoreBusy(true);
+    setRestoreError(null);
+    try {
       setIsLoading(true);
       flushPendingSave();
-      await restoreDatabase(parsed);
-      const data = await getDocuments();
-      setDocuments(data);
-      setSelectedDocumentId(getLatestDocumentId(data));
+      const payload = await restoreEncryptedVault(trimmed, restoreRecord);
+      setDocuments(payload.documents);
+      setSelectedDocumentId(getLatestDocumentId(payload.documents));
       setPendingDeleteId(null);
       setSearchQuery("");
       setErrorMessage(null);
       markUploadDirty();
+      handleRestoreCancel();
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to restore notes.");
+      setRestoreError("Unable to decrypt vault. Check your password.");
     } finally {
       setIsLoading(false);
+      setIsRestoreBusy(false);
     }
   };
 
@@ -1127,9 +1154,99 @@ function App() {
             </div>
           </div>
         ) : null}
+        {restoreRecord ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="restore-dialog-title"
+          >
+            <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
+              <h2
+                id="restore-dialog-title"
+                className="text-base font-semibold text-slate-100"
+              >
+                Unlock vault export
+              </h2>
+              <p className="mt-2 text-sm text-slate-300">
+                Enter the password used to encrypt this vault export.
+              </p>
+              <label
+                htmlFor="restore-password"
+                className="mt-4 block text-xs text-slate-400"
+              >
+                Vault password
+              </label>
+              <input
+                id="restore-password"
+                type="password"
+                value={restorePassword}
+                onChange={(event) => setRestorePassword(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-indigo-400"
+              />
+              {restoreError ? (
+                <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                  {restoreError}
+                </p>
+              ) : null}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleRestoreCancel}
+                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
+                  disabled={isRestoreBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestoreConfirm}
+                  className="rounded-full border border-indigo-500 bg-indigo-500/10 px-4 py-1 text-xs text-indigo-100 transition hover:bg-indigo-500/20"
+                  disabled={isRestoreBusy}
+                >
+                  {isRestoreBusy ? "Restoring..." : "Restore"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function App() {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [initialDocuments, setInitialDocuments] = useState<NoteDocument[]>([]);
+
+  const handleUnlock = useCallback(async (password: string) => {
+    setIsUnlocking(true);
+    setUnlockError(null);
+    try {
+      const payload = await initializeVault(password);
+      setInitialDocuments(payload.documents);
+      setIsUnlocked(true);
+    } catch (e) {
+      console.error(e);
+      setUnlockError("Unable to decrypt notes. Check your password.");
+    } finally {
+      setIsUnlocking(false);
+    }
+  }, []);
+
+  if (!isUnlocked) {
+    return (
+      <PairingGate
+        onUnlock={handleUnlock}
+        isUnlocking={isUnlocking}
+        errorMessage={unlockError}
+      />
+    );
+  }
+
+  return <NotesApp initialDocuments={initialDocuments} />;
 }
 
 export default App;
