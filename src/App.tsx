@@ -4,14 +4,10 @@ import "@blocknote/core/fonts/inter.css";
 import {
   addDocument,
   deleteDocument,
-  getDocuments,
   initializeVault,
   getEncryptedVaultRecord,
-  exportDatabase,
   restoreEncryptedVault,
-  restoreDatabase,
   updateDocument,
-  type ExportedNotesPayload,
   type NoteDocument,
   type EncryptedVaultRecord,
 } from "./notesDb";
@@ -25,6 +21,9 @@ const tagKey = (value: string) => normalizeTag(value).toLowerCase();
 const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
 const UPLOAD_URL_KEY = "notes:uploadUrl";
 const UPLOAD_ENABLED_KEY = "notes:uploadEnabled";
+const INACTIVITY_ENABLED_KEY = "notes:inactivityEnabled";
+const INACTIVITY_MINUTES_KEY = "notes:inactivityMinutes";
+const DEFAULT_INACTIVITY_MINUTES = 15;
 const SAVE_DEBOUNCE_MS = 500;
 
 const getLatestDocumentId = (docs: NoteDocument[]) => {
@@ -71,40 +70,6 @@ const extractTextFromBlocks = (blocks: NoteDocument["content"]) => {
 
   walkBlocks(blocks);
   return parts.join(" ");
-};
-
-const isValidPayload = (value: unknown): value is ExportedNotesPayload => {
-  if (!value || typeof value !== "object") return false;
-  const payload = value as ExportedNotesPayload;
-  if (typeof payload.version !== "number") return false;
-  if (typeof payload.exportedAt !== "number") return false;
-  if (!Array.isArray(payload.documents)) return false;
-  if (!Array.isArray(payload.uploads)) return false;
-
-  const docsValid = payload.documents.every((doc) => {
-    if (!doc || typeof doc !== "object") return false;
-    if (typeof doc.id !== "number") return false;
-    if (typeof doc.version !== "number") return false;
-    if (typeof doc.title !== "string") return false;
-    if (typeof doc.createdAt !== "number") return false;
-    if (!Array.isArray(doc.tags)) return false;
-    if (!doc.tags.every((tag) => typeof tag === "string")) return false;
-    return true;
-  });
-
-  if (!docsValid) return false;
-
-  return payload.uploads.every((upload) => {
-    if (!upload || typeof upload !== "object") return false;
-    return (
-      typeof upload.id === "string" &&
-      typeof upload.name === "string" &&
-      typeof upload.type === "string" &&
-      typeof upload.size === "number" &&
-      typeof upload.createdAt === "number" &&
-      typeof upload.dataUrl === "string"
-    );
-  });
 };
 
 const isValidEncryptedRecord = (
@@ -177,21 +142,20 @@ const scoreDocument = (doc: NoteDocument, tokens: string[]) => {
 };
 
 function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
-  const [documents, setDocuments] =
-    useState<NoteDocument[]>(initialDocuments);
+  const [documents, setDocuments] = useState<NoteDocument[]>(initialDocuments);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
     () => {
       const storedRaw = sessionStorage.getItem(SELECTED_DOCUMENT_KEY);
       const parsedId = storedRaw ? Number(storedRaw) : null;
       const storedId = Number.isFinite(parsedId) ? parsedId : null;
       const hasStoredSelection =
-        storedId !== null && initialDocuments.some((doc) => doc.id === storedId);
+        storedId !== null &&
+        initialDocuments.some((doc) => doc.id === storedId);
       const latestId = getLatestDocumentId(initialDocuments);
       return hasStoredSelection ? storedId : (latestId ?? null);
     },
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftTag, setDraftTag] = useState("");
@@ -205,6 +169,13 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
   const [isUploadEnabled, setIsUploadEnabled] = useState(
     () => localStorage.getItem(UPLOAD_ENABLED_KEY) === "true",
   );
+  const [isInactivityEnabled, setIsInactivityEnabled] = useState(
+    () => localStorage.getItem(INACTIVITY_ENABLED_KEY) === "true",
+  );
+  const [inactivityMinutes, setInactivityMinutes] = useState(() => {
+    const raw = Number(localStorage.getItem(INACTIVITY_MINUTES_KEY));
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_INACTIVITY_MINUTES;
+  });
   const [hasUploadChanges, setHasUploadChanges] = useState(false);
   const [showUploadFailureBanner, setShowUploadFailureBanner] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
@@ -213,6 +184,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
   const [restorePassword, setRestorePassword] = useState("");
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [isRestoreBusy, setIsRestoreBusy] = useState(false);
+  const inactivityTimeoutRef = useRef<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const uploadInFlightRef = useRef(false);
@@ -227,9 +199,9 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
     pendingSaveRef.current = null;
     updateDocument(id, doc).catch((e) => {
       console.error(e);
-      setErrorMessage("Unable to save changes.");
+      alert("Unable to save changes.");
     });
-  }, [setErrorMessage]);
+  }, []);
   const scheduleSave = useCallback(
     (id: number, doc: NoteDocument) => {
       if (pendingSaveRef.current && pendingSaveRef.current.id !== id) {
@@ -258,7 +230,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       markUploadDirty();
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to save document.");
+      alert("Unable to save document.");
     }
   };
 
@@ -273,7 +245,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       markUploadDirty();
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to delete document.");
+      alert("Unable to delete document.");
     }
   };
 
@@ -358,6 +330,12 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
     localStorage.setItem(UPLOAD_ENABLED_KEY, String(isUploadEnabled));
   }, [isUploadEnabled]);
   useEffect(() => {
+    localStorage.setItem(INACTIVITY_ENABLED_KEY, String(isInactivityEnabled));
+  }, [isInactivityEnabled]);
+  useEffect(() => {
+    localStorage.setItem(INACTIVITY_MINUTES_KEY, String(inactivityMinutes));
+  }, [inactivityMinutes]);
+  useEffect(() => {
     return () => {
       if (saveTimeoutRef.current !== null) {
         window.clearTimeout(saveTimeoutRef.current);
@@ -399,6 +377,52 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
     };
   }, [isUploadEnabled, uploadIfNeeded]);
 
+  const handleAutoLock = useCallback(async () => {
+    try {
+      flushPendingSave();
+      await uploadIfNeeded();
+    } finally {
+      window.location.reload();
+    }
+  }, [flushPendingSave, uploadIfNeeded]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimeoutRef.current !== null) {
+      window.clearTimeout(inactivityTimeoutRef.current);
+      inactivityTimeoutRef.current = null;
+    }
+    if (!isInactivityEnabled) return;
+    const delayMs = Math.max(1, inactivityMinutes) * 60 * 1000;
+    inactivityTimeoutRef.current = window.setTimeout(() => {
+      inactivityTimeoutRef.current = null;
+      handleAutoLock();
+    }, delayMs);
+  }, [handleAutoLock, inactivityMinutes, isInactivityEnabled]);
+
+  useEffect(() => {
+    resetInactivityTimer();
+    if (!isInactivityEnabled) return;
+
+    const events: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "focus",
+    ];
+    const handleActivity = () => resetInactivityTimer();
+
+    events.forEach((event) =>
+      window.addEventListener(event, handleActivity, { passive: true }),
+    );
+    return () => {
+      events.forEach((event) =>
+        window.removeEventListener(event, handleActivity),
+      );
+    };
+  }, [isInactivityEnabled, resetInactivityTimer]);
+
   const handleExport = async () => {
     flushPendingSave();
     try {
@@ -409,7 +433,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `notes-export-${new Date(payload.exportedAt)
+      link.download = `notes-export-${new Date()
         .toISOString()
         .slice(0, 10)}.json`;
       document.body.appendChild(link);
@@ -418,7 +442,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to export notes.");
+      alert("Unable to export notes.");
     }
   };
 
@@ -437,7 +461,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       const text = await file.text();
       const parsed = JSON.parse(text) as unknown;
       if (!isValidEncryptedRecord(parsed)) {
-        setErrorMessage("Invalid vault export file.");
+        alert("Invalid vault export file.");
         return;
       }
       const confirmed = window.confirm(
@@ -449,7 +473,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       setRestoreError(null);
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to restore notes.");
+      alert("Unable to restore notes.");
     }
   };
 
@@ -476,7 +500,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       setSelectedDocumentId(getLatestDocumentId(payload.documents));
       setPendingDeleteId(null);
       setSearchQuery("");
-      setErrorMessage(null);
       markUploadDirty();
       handleRestoreCancel();
     } catch (e) {
@@ -604,7 +627,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       });
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to save title.");
+      alert("Unable to save title.");
     }
   };
 
@@ -638,7 +661,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       });
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to save tags.");
+      alert("Unable to save tags.");
     }
   };
 
@@ -659,7 +682,7 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       });
     } catch (e) {
       console.error(e);
-      setErrorMessage("Unable to save tags.");
+      alert("Unable to save tags.");
     }
   };
 
@@ -744,12 +767,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
             className="hidden"
             aria-hidden="true"
           />
-
-          {errorMessage ? (
-            <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-              {errorMessage}
-            </p>
-          ) : null}
 
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
             <input
@@ -1140,6 +1157,53 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                       Changes will upload when you leave the tab or window.
                     </p>
                   ) : null}
+                </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">
+                      Auto-lock on inactivity
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Reloads the page after inactivity to re-lock the vault.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={isInactivityEnabled}
+                      onChange={(event) =>
+                        setIsInactivityEnabled(event.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-500"
+                    />
+                    Enable
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <label
+                    className="text-xs text-slate-400"
+                    htmlFor="inactivity-minutes"
+                  >
+                    Inactivity minutes
+                  </label>
+                  <input
+                    id="inactivity-minutes"
+                    type="number"
+                    min={1}
+                    value={inactivityMinutes}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      setInactivityMinutes(
+                        Number.isFinite(next) && next > 0
+                          ? next
+                          : DEFAULT_INACTIVITY_MINUTES,
+                      );
+                    }}
+                    disabled={!isInactivityEnabled}
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-transparent px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-indigo-400 disabled:opacity-60"
+                  />
                 </div>
               </div>
               <div className="mt-6 flex justify-end">
