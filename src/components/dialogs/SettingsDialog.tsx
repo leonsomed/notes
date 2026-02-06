@@ -11,6 +11,15 @@ interface SettingsDialogProps {
   onClose: () => void;
   onExport: () => void;
   onRestore: () => void;
+  changePasswordCurrent: string;
+  onChangePasswordCurrent: (value: string) => void;
+  changePasswordNext: string;
+  onChangePasswordNext: (value: string) => void;
+  changePasswordConfirm: string;
+  onChangePasswordConfirm: (value: string) => void;
+  changePasswordError: string | null;
+  isChangePasswordBusy: boolean;
+  onChangePasswordSubmit: () => void;
   uploadUrl: string;
   onUploadUrlChange: (value: string) => void;
   uploadNodeName: string;
@@ -42,6 +51,15 @@ export function SettingsDialog({
   onClose,
   onExport,
   onRestore,
+  changePasswordCurrent,
+  onChangePasswordCurrent,
+  changePasswordNext,
+  onChangePasswordNext,
+  changePasswordConfirm,
+  onChangePasswordConfirm,
+  changePasswordError,
+  isChangePasswordBusy,
+  onChangePasswordSubmit,
   uploadUrl,
   onUploadUrlChange,
   uploadNodeName,
@@ -276,6 +294,75 @@ export function SettingsDialog({
                 }
               >
                 {isRestoreUploadBusy ? "Loading..." : "Restore from server"}
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div>
+            <p className="text-sm font-medium text-slate-100">
+              Change vault password
+            </p>
+            <p className="text-xs text-slate-400">
+              Re-encrypt your vault with a new password.
+            </p>
+          </div>
+          <div className="mt-3 grid gap-3">
+            <div>
+              <label
+                className="text-xs text-slate-400"
+                htmlFor="change-password-current"
+              >
+                Current password
+              </label>
+              <TextInput
+                id="change-password-current"
+                type="password"
+                value={changePasswordCurrent}
+                onChange={(event) => onChangePasswordCurrent(event.target.value)}
+                className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
+              />
+            </div>
+            <div>
+              <label
+                className="text-xs text-slate-400"
+                htmlFor="change-password-next"
+              >
+                New password
+              </label>
+              <TextInput
+                id="change-password-next"
+                type="password"
+                value={changePasswordNext}
+                onChange={(event) => onChangePasswordNext(event.target.value)}
+                className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
+              />
+            </div>
+            <div>
+              <label
+                className="text-xs text-slate-400"
+                htmlFor="change-password-confirm"
+              >
+                Confirm new password
+              </label>
+              <TextInput
+                id="change-password-confirm"
+                type="password"
+                value={changePasswordConfirm}
+                onChange={(event) => onChangePasswordConfirm(event.target.value)}
+                className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
+              />
+            </div>
+            {changePasswordError ? (
+              <p className="text-xs text-rose-300">{changePasswordError}</p>
+            ) : null}
+            <div className="flex justify-end">
+              <Button
+                size="xsWide"
+                onClick={onChangePasswordSubmit}
+                disabled={isChangePasswordBusy}
+              >
+                {isChangePasswordBusy ? "Updating..." : "Update password"}
               </Button>
             </div>
           </div>

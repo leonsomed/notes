@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addDocument,
+  changeVaultPassword,
   deleteDocument,
   getEncryptedVaultRecord,
   restoreEncryptedVault,
@@ -83,6 +84,13 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
   const [restoreUploadUrlDraft, setRestoreUploadUrlDraft] = useState(
     restoreUploadUrl,
   );
+  const [changePasswordCurrent, setChangePasswordCurrent] = useState("");
+  const [changePasswordNext, setChangePasswordNext] = useState("");
+  const [changePasswordConfirm, setChangePasswordConfirm] = useState("");
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(
+    null,
+  );
+  const [isChangePasswordBusy, setIsChangePasswordBusy] = useState(false);
   const inactivityTimeoutRef = useRef<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
@@ -528,6 +536,40 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     }
   };
 
+  const handleChangePassword = async () => {
+    const current = changePasswordCurrent.trim();
+    const next = changePasswordNext.trim();
+    const confirm = changePasswordConfirm.trim();
+    if (!current) {
+      setChangePasswordError("Enter the current vault password.");
+      return;
+    }
+    if (!next) {
+      setChangePasswordError("Enter a new vault password.");
+      return;
+    }
+    if (next !== confirm) {
+      setChangePasswordError("New passwords do not match.");
+      return;
+    }
+    setIsChangePasswordBusy(true);
+    setChangePasswordError(null);
+    try {
+      flushPendingSave();
+      await changeVaultPassword(current, next);
+      setChangePasswordCurrent("");
+      setChangePasswordNext("");
+      setChangePasswordConfirm("");
+      setChangePasswordError(null);
+      setHasUploadChanges(true);
+    } catch (e) {
+      console.error(e);
+      setChangePasswordError("Unable to update password. Check your current one.");
+    } finally {
+      setIsChangePasswordBusy(false);
+    }
+  };
+
   const tagSuggestions = useMemo(() => {
     const uniqueTags = new Map<string, string>();
     documents.forEach((doc) => {
@@ -829,6 +871,15 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
           onClose={() => setIsSettingsOpen(false)}
           onExport={handleExport}
           onRestore={handleRestoreClick}
+          changePasswordCurrent={changePasswordCurrent}
+          onChangePasswordCurrent={setChangePasswordCurrent}
+          changePasswordNext={changePasswordNext}
+          onChangePasswordNext={setChangePasswordNext}
+          changePasswordConfirm={changePasswordConfirm}
+          onChangePasswordConfirm={setChangePasswordConfirm}
+          changePasswordError={changePasswordError}
+          isChangePasswordBusy={isChangePasswordBusy}
+          onChangePasswordSubmit={handleChangePassword}
           uploadUrl={uploadUrl}
           onUploadUrlChange={setUploadUrl}
           uploadNodeName={uploadNodeName}

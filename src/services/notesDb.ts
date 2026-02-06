@@ -270,6 +270,22 @@ export async function restoreEncryptedVault(
   return decrypted;
 }
 
+export async function changeVaultPassword(
+  currentPassword: string,
+  nextPassword: string,
+): Promise<void> {
+  const record = await readVaultRecord();
+  if (!record) {
+    throw new Error("Vault is empty.");
+  }
+  const decrypted = await decryptPayloadWithType(currentPassword, record);
+  const nextPayload = { ...decrypted, exportedAt: Date.now() };
+  const encrypted = await encryptPayload(nextPassword, nextPayload);
+  sessionPassword = nextPassword;
+  cachedVault = nextPayload;
+  await writeVaultRecord(encrypted);
+}
+
 export async function getDocuments(): Promise<NoteDocument[]> {
   requireUnlocked();
   return cachedVault!.documents;
