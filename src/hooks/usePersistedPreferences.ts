@@ -6,7 +6,7 @@ const UPLOAD_URL_KEY = "notes:uploadUrl";
 const UPLOAD_ENABLED_KEY = "notes:uploadEnabled";
 const INACTIVITY_ENABLED_KEY = "notes:inactivityEnabled";
 const INACTIVITY_MINUTES_KEY = "notes:inactivityMinutes";
-const DEFAULT_INACTIVITY_MINUTES = 15;
+export const DEFAULT_INACTIVITY_MINUTES = 15;
 
 const getLatestDocumentId = (docs: NoteDocument[]) => {
   const latestDoc = docs.reduce<NoteDocument | null>((latest, doc) => {

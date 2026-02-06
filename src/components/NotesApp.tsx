@@ -7,10 +7,8 @@ import {
   updateDocument,
   type NoteDocument,
 } from "../services/notesDb";
-import { BackupActionButton } from "./BackupActionButton";
 import { DocumentListItem } from "./DocumentListItem";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
-import { SettingsCheckbox } from "./SettingsCheckbox";
 import { TagEditor } from "./TagEditor";
 import { TextInput } from "./TextInput";
 import { TopBanner } from "./TopBanner";
@@ -21,8 +19,10 @@ import {
 } from "../services/crypto";
 import { useNotesSearch } from "../hooks/useNotesSearch";
 import { usePersistedPreferences } from "../hooks/usePersistedPreferences";
+import { DeleteDialog } from "./dialogs/DeleteDialog";
+import { RestoreDialog } from "./dialogs/RestoreDialog";
+import { SettingsDialog } from "./dialogs/SettingsDialog";
 
-const DEFAULT_INACTIVITY_MINUTES = 15;
 const SAVE_DEBOUNCE_MS = 500;
 
 const getLatestDocumentId = (docs: NoteDocument[]) => {
@@ -664,232 +664,37 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
             </div>
           )}
         </main>
-        {pendingDeleteId !== null ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-dialog-title"
-          >
-            <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
-              <h2
-                id="delete-dialog-title"
-                className="text-base font-semibold text-slate-100"
-              >
-                Delete document "{pendingDeleteDoc?.title}"?
-              </h2>
-              <p className="mt-2 text-sm text-slate-300">
-                This action cannot be undone.
-              </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPendingDeleteId(null)}
-                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-                  autoFocus
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  className="rounded-full border border-rose-500 bg-rose-500/10 px-4 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {isSettingsOpen ? (
-          <div
-            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-dialog-title"
-          >
-            <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
-              <div className="flex items-center justify-between">
-                <h2
-                  id="settings-dialog-title"
-                  className="text-base font-semibold text-slate-100"
-                >
-                  Settings
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:text-slate-200"
-                  aria-label="Close settings"
-                >
-                  ×
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-slate-300">
-                Manage your data exports and restores.
-              </p>
-              <div className="mt-4 grid gap-3">
-                <BackupActionButton
-                  label="Export notes"
-                  description="Download a JSON backup"
-                  onClick={handleExport}
-                />
-                <BackupActionButton
-                  label="Restore notes"
-                  description="Replace with a backup"
-                  onClick={handleRestoreClick}
-                />
-              </div>
-              <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-100">
-                      Background upload
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Upload changes when you leave the tab or window.
-                    </p>
-                  </div>
-                  <SettingsCheckbox
-                    checked={isUploadEnabled}
-                    disabled={!isUploadUrlValid}
-                    onChange={setIsUploadEnabled}
-                  />
-                </div>
-                <div className="mt-3">
-                  <label
-                    className="text-xs text-slate-400"
-                    htmlFor="upload-url"
-                  >
-                    Server URL
-                  </label>
-                  <TextInput
-                    id="upload-url"
-                    value={uploadUrl}
-                    onChange={(event) => setUploadUrl(event.target.value)}
-                    placeholder="https://example.com/api/notes/export"
-                    className="mt-2 w-full px-3 py-2 text-xs text-slate-200"
-                  />
-                  {!isUploadUrlValid ? (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Enter a valid URL to enable uploads.
-                    </p>
-                  ) : null}
-                  {isUploadEnabled && hasUploadChanges ? (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Changes will upload when you leave the tab or window.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-100">
-                      Auto-lock on inactivity
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Reloads the page after inactivity to re-lock the vault.
-                    </p>
-                  </div>
-                  <SettingsCheckbox
-                    checked={isInactivityEnabled}
-                    onChange={setIsInactivityEnabled}
-                  />
-                </div>
-                <div className="mt-3">
-                  <label
-                    className="text-xs text-slate-400"
-                    htmlFor="inactivity-minutes"
-                  >
-                    Inactivity minutes
-                  </label>
-                  <TextInput
-                    id="inactivity-minutes"
-                    type="number"
-                    min={1}
-                    value={inactivityMinutes}
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      setInactivityMinutes(
-                        Number.isFinite(next) && next > 0
-                          ? next
-                          : DEFAULT_INACTIVITY_MINUTES,
-                      );
-                    }}
-                    disabled={!isInactivityEnabled}
-                    className="mt-2 w-full px-3 py-2 text-xs text-slate-200 disabled:opacity-60"
-                  />
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {restoreRecord ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="restore-dialog-title"
-          >
-            <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-xl">
-              <h2
-                id="restore-dialog-title"
-                className="text-base font-semibold text-slate-100"
-              >
-                Unlock vault export
-              </h2>
-              <p className="mt-2 text-sm text-slate-300">
-                Enter the password used to encrypt this vault export.
-              </p>
-              <label
-                htmlFor="restore-password"
-                className="mt-4 block text-xs text-slate-400"
-              >
-                Vault password
-              </label>
-              <TextInput
-                id="restore-password"
-                type="password"
-                value={restorePassword}
-                onChange={(event) => setRestorePassword(event.target.value)}
-                className="mt-2 w-full px-3 py-2 text-sm text-slate-200"
-              />
-              {restoreError ? (
-                <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-                  {restoreError}
-                </p>
-              ) : null}
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleRestoreCancel}
-                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-                  disabled={isRestoreBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRestoreConfirm}
-                  className="rounded-full border border-indigo-500 bg-indigo-500/10 px-4 py-1 text-xs text-indigo-100 transition hover:bg-indigo-500/20"
-                  disabled={isRestoreBusy}
-                >
-                  {isRestoreBusy ? "Restoring..." : "Restore"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <DeleteDialog
+          isOpen={pendingDeleteId !== null}
+          documentTitle={pendingDeleteDoc?.title}
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={handleConfirmDelete}
+        />
+        <SettingsDialog
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onExport={handleExport}
+          onRestore={handleRestoreClick}
+          uploadUrl={uploadUrl}
+          onUploadUrlChange={setUploadUrl}
+          isUploadEnabled={isUploadEnabled}
+          onUploadEnabledChange={setIsUploadEnabled}
+          isUploadUrlValid={isUploadUrlValid}
+          hasUploadChanges={hasUploadChanges}
+          isInactivityEnabled={isInactivityEnabled}
+          onInactivityEnabledChange={setIsInactivityEnabled}
+          inactivityMinutes={inactivityMinutes}
+          onInactivityMinutesChange={setInactivityMinutes}
+        />
+        <RestoreDialog
+          isOpen={Boolean(restoreRecord)}
+          password={restorePassword}
+          onPasswordChange={setRestorePassword}
+          error={restoreError}
+          isBusy={isRestoreBusy}
+          onCancel={handleRestoreCancel}
+          onConfirm={handleRestoreConfirm}
+        />
       </div>
     </div>
   );
