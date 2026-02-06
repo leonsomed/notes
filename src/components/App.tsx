@@ -10,7 +10,7 @@ import {
   updateDocument,
   type NoteDocument,
   type EncryptedVaultRecord,
-} from "./notesDb";
+} from "../services/notesDb";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
 import { PairingGate } from "./PairingGate";
 
