@@ -16,12 +16,10 @@ import { DocumentListItem } from "./DocumentListItem";
 import { NoteDocumentEditor } from "./NoteDocumentEditor";
 import { PairingGate } from "./PairingGate";
 import { SettingsCheckbox } from "./SettingsCheckbox";
+import { TagEditor } from "./TagEditor";
 import { TextInput } from "./TextInput";
 import { TopBanner } from "./TopBanner";
-
-const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
-
-const tagKey = (value: string) => normalizeTag(value).toLowerCase();
+import { normalizeTag, tagKey } from "../utils/tags";
 
 const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
 const UPLOAD_URL_KEY = "notes:uploadUrl";
@@ -163,9 +161,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
-  const [draftTag, setDraftTag] = useState("");
-  const [isTagInputFocused, setIsTagInputFocused] = useState(false);
-  const [activeTagIndex, setActiveTagIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [uploadUrl, setUploadUrl] = useState(
@@ -533,24 +528,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
       .sort((a, b) => a.localeCompare(b));
   }, [documents, selectedDocument?.tags]);
 
-  const visibleTagSuggestions = useMemo(() => {
-    if (draftTag === "/") return tagSuggestions;
-    const query = normalizeTag(draftTag);
-    if (!query) return tagSuggestions;
-    const queryKey = tagKey(query);
-    return tagSuggestions.filter((tag) => tagKey(tag).startsWith(queryKey));
-  }, [draftTag, tagSuggestions]);
-
-  useEffect(() => {
-    if (!isTagInputFocused || visibleTagSuggestions.length === 0) {
-      setActiveTagIndex(-1);
-      return;
-    }
-    setActiveTagIndex((current) =>
-      current >= visibleTagSuggestions.length ? -1 : current,
-    );
-  }, [isTagInputFocused, visibleTagSuggestions]);
-
   const tagSearchQuery = useMemo(() => {
     const trimmed = searchQuery.trim();
     const match = /^tag:\s*(.*)$/i.exec(trimmed);
@@ -600,7 +577,6 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
   useEffect(() => {
     setIsEditingTitle(false);
     setDraftTitle(selectedDocument?.title ?? "");
-    setDraftTag("");
   }, [selectedDocument?.id, selectedDocument?.title]);
 
   useEffect(() => {
@@ -830,109 +806,13 @@ function NotesApp({ initialDocuments }: { initialDocuments: NoteDocument[] }) {
                   <p className="text-sm text-slate-400">
                     Edit the selected document. Changes save automatically.
                   </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {selectedDocument.tags.length > 0 ? (
-                      selectedDocument.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/40 px-2 py-1 text-xs text-slate-300"
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => removeTag(tag)}
-                            className="rounded-full px-1 text-slate-500 transition hover:text-rose-300"
-                            aria-label={`Remove ${tag} tag`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-500">
-                        No tags yet.
-                      </span>
-                    )}
-                    <div className="relative min-w-40">
-                      <TextInput
-                        value={draftTag}
-                        onChange={(event) => setDraftTag(event.target.value)}
-                        onFocus={() => setIsTagInputFocused(true)}
-                        onKeyDown={(event) => {
-                          if (event.key === "ArrowDown") {
-                            if (visibleTagSuggestions.length === 0) return;
-                            event.preventDefault();
-                            setActiveTagIndex((current) =>
-                              current < 0
-                                ? 0
-                                : Math.min(
-                                    current + 1,
-                                    visibleTagSuggestions.length - 1,
-                                  ),
-                            );
-                            return;
-                          }
-                          if (event.key === "ArrowUp") {
-                            if (visibleTagSuggestions.length === 0) return;
-                            event.preventDefault();
-                            setActiveTagIndex((current) =>
-                              current < 0
-                                ? visibleTagSuggestions.length - 1
-                                : Math.max(current - 1, 0),
-                            );
-                            return;
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setDraftTag("");
-                            setIsTagInputFocused(false);
-                            setActiveTagIndex(-1);
-                            event.currentTarget.blur();
-                            return;
-                          }
-                          if (event.key === "Enter" || event.key === ",") {
-                            event.preventDefault();
-                            if (activeTagIndex >= 0) {
-                              commitTag(visibleTagSuggestions[activeTagIndex]);
-                            } else {
-                              commitTag(draftTag);
-                            }
-                          }
-                        }}
-                        onBlur={() => {
-                          setIsTagInputFocused(false);
-                          setActiveTagIndex(-1);
-                          if (draftTag.trim()) commitTag(draftTag);
-                        }}
-                        placeholder="/ to show all tags"
-                        className="w-full px-2 py-1 text-xs text-slate-200"
-                      />
-                      {isTagInputFocused &&
-                      (draftTag.trim() || draftTag === "/") &&
-                      visibleTagSuggestions.length > 0 ? (
-                        <div className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-800 bg-slate-950 text-xs text-slate-200 shadow-lg">
-                          {visibleTagSuggestions.map((tag) => (
-                            <button
-                              key={tag}
-                              type="button"
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                commitTag(tag);
-                              }}
-                              className={`w-full px-2 py-1 text-left transition hover:bg-slate-900/60 ${
-                                activeTagIndex >= 0 &&
-                                visibleTagSuggestions[activeTagIndex] === tag
-                                  ? "bg-slate-900/60"
-                                  : ""
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                  <TagEditor
+                    key={selectedDocument.id}
+                    tags={selectedDocument.tags}
+                    suggestions={tagSuggestions}
+                    onCommitTag={commitTag}
+                    onRemoveTag={removeTag}
+                  />
                 </div>
                 <button
                   type="button"
