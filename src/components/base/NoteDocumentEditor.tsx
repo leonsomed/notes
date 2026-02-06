@@ -3,22 +3,23 @@ import "@blocknote/core/fonts/inter.css";
 import { BlockNoteView } from "@blocknote/mantine";
 import { type Block, type PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
-import { storeUploadAndGetUrl } from "../services/notesDb";
 
 interface NoteDocumentEditorProps {
   initialContent: PartialBlock[] | undefined;
   onChange: (blocks: Block[]) => unknown;
+  uploadFile: (file: File) => Promise<string>;
   className?: string;
 }
 
 export function NoteDocumentEditor({
   initialContent,
   onChange,
+  uploadFile,
   className,
 }: NoteDocumentEditorProps) {
   const editor = useCreateBlockNote({
     initialContent,
-    uploadFile: storeUploadAndGetUrl,
+    uploadFile,
   });
 
   return (

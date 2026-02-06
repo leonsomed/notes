@@ -7,16 +7,17 @@ import {
   updateDocument,
   type NoteDocument,
 } from "../services/notesDb";
-import { DocumentListItem } from "./DocumentListItem";
-import { NoteDocumentEditor } from "./NoteDocumentEditor";
-import { TagEditor } from "./TagEditor";
-import { TextInput } from "./TextInput";
-import { TopBanner } from "./TopBanner";
+import { DocumentListItem } from "./base/DocumentListItem";
+import { NoteDocumentEditor } from "./base/NoteDocumentEditor";
+import { TagEditor } from "./base/TagEditor";
+import { TextInput } from "./base/TextInput";
+import { TopBanner } from "./base/TopBanner";
 import { normalizeTag, tagKey } from "../utils/tags";
 import {
   isValidEncryptedRecord,
   type EncryptedVaultRecord,
 } from "../services/crypto";
+import { storeUploadAndGetUrl } from "../services/notesDb";
 import { useNotesSearch } from "../hooks/useNotesSearch";
 import { usePersistedPreferences } from "../hooks/usePersistedPreferences";
 import { DeleteDialog } from "./dialogs/DeleteDialog";
@@ -210,7 +211,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     if (isUploadEnabled && !isUploadUrlValid) {
       setIsUploadEnabled(false);
     }
-  }, [isUploadEnabled, isUploadUrlValid]);
+  }, [isUploadEnabled, isUploadUrlValid, setIsUploadEnabled]);
   useEffect(() => {
     if (!hasUploadChanges) {
       setShowUploadFailureBanner(false);
@@ -639,6 +640,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
                   key={selectedDocument.id}
                   initialContent={selectedDocument.content}
                   className="h-full w-full"
+                  uploadFile={storeUploadAndGetUrl}
                   onChange={(blocks) => {
                     setDocuments((prev) =>
                       prev.map((doc) =>

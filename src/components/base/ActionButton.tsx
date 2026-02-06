@@ -1,14 +1,14 @@
-interface BackupActionButtonProps {
+interface ActionButtonProps {
   label: string;
   description: string;
   onClick: () => void;
 }
 
-export function BackupActionButton({
+export function ActionButton({
   label,
   description,
   onClick,
-}: BackupActionButtonProps) {
+}: ActionButtonProps) {
   return (
     <button
       type="button"

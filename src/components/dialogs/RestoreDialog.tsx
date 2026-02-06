@@ -1,5 +1,5 @@
-import { TextInput } from "../TextInput";
-import { Dialog } from "./Dialog";
+import { TextInput } from "../base/TextInput";
+import { Dialog } from "../base/Dialog";
 
 interface RestoreDialogProps {
   isOpen: boolean;

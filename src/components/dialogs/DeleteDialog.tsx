@@ -1,4 +1,4 @@
-import { Dialog } from "./Dialog";
+import { Dialog } from "../base/Dialog";
 
 interface DeleteDialogProps {
   isOpen: boolean;

@@ -1,16 +1,16 @@
-interface SettingsCheckboxProps {
+interface CheckboxProps {
   checked: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
   label?: string;
 }
 
-export function SettingsCheckbox({
+export function Checkbox({
   checked,
   onChange,
   disabled = false,
   label = "Enable",
-}: SettingsCheckboxProps) {
+}: CheckboxProps) {
   return (
     <label className="flex items-center gap-2 text-xs text-slate-300">
       <input

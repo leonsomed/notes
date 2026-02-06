@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextInput } from "./TextInput";
 import { TagPill } from "./TagPill";
-import { normalizeTag, tagKey } from "../utils/tags";
+import { normalizeTag, tagKey } from "../../utils/tags";
 
 interface TagEditorProps {
   tags: string[];

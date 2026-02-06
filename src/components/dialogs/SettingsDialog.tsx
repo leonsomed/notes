@@ -1,8 +1,8 @@
-import { BackupActionButton } from "../BackupActionButton";
-import { SettingsCheckbox } from "../SettingsCheckbox";
-import { TextInput } from "../TextInput";
+import { ActionButton } from "../base/ActionButton";
+import { Checkbox } from "../base/Checkbox";
+import { TextInput } from "../base/TextInput";
+import { Dialog } from "../base/Dialog";
 import { DEFAULT_INACTIVITY_MINUTES } from "../../hooks/usePersistedPreferences";
-import { Dialog } from "./Dialog";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -61,12 +61,12 @@ export function SettingsDialog({
         Manage your data exports and restores.
       </p>
       <div className="mt-4 grid gap-3">
-        <BackupActionButton
+        <ActionButton
           label="Export notes"
           description="Download a JSON backup"
           onClick={onExport}
         />
-        <BackupActionButton
+        <ActionButton
           label="Restore notes"
           description="Replace with a backup"
           onClick={onRestore}
@@ -82,7 +82,7 @@ export function SettingsDialog({
               Upload changes when you leave the tab or window.
             </p>
           </div>
-          <SettingsCheckbox
+          <Checkbox
             checked={isUploadEnabled}
             disabled={!isUploadUrlValid}
             onChange={onUploadEnabledChange}
@@ -121,13 +121,16 @@ export function SettingsDialog({
               Reloads the page after inactivity to re-lock the vault.
             </p>
           </div>
-          <SettingsCheckbox
+          <Checkbox
             checked={isInactivityEnabled}
             onChange={onInactivityEnabledChange}
           />
         </div>
         <div className="mt-3">
-          <label className="text-xs text-slate-400" htmlFor="inactivity-minutes">
+          <label
+            className="text-xs text-slate-400"
+            htmlFor="inactivity-minutes"
+          >
             Inactivity minutes
           </label>
           <TextInput

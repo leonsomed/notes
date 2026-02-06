@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { TextInput } from "./TextInput";
+import { TextInput } from "./base/TextInput";
 
 interface PairingGateProps {
   onUnlock: (password: string) => Promise<void>;
