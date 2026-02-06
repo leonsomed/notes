@@ -47,8 +47,14 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     setSelectedDocumentId,
     uploadUrl,
     setUploadUrl,
+    uploadNodeName,
+    setUploadNodeName,
     isUploadEnabled,
     setIsUploadEnabled,
+    restoreUploadUrl,
+    setRestoreUploadUrl,
+    restoreNodeName,
+    setRestoreNodeName,
     isInactivityEnabled,
     setIsInactivityEnabled,
     inactivityMinutes,
@@ -68,11 +74,21 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
   const [restorePassword, setRestorePassword] = useState("");
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [isRestoreBusy, setIsRestoreBusy] = useState(false);
+  const [restoreNodeOptions, setRestoreNodeOptions] = useState<string[]>([]);
+  const [isRestoreNodesLoading, setIsRestoreNodesLoading] = useState(false);
+  const [restoreNodesError, setRestoreNodesError] = useState<string | null>(
+    null,
+  );
+  const [isRestoreUploadBusy, setIsRestoreUploadBusy] = useState(false);
+  const [restoreUploadUrlDraft, setRestoreUploadUrlDraft] = useState(
+    restoreUploadUrl,
+  );
   const inactivityTimeoutRef = useRef<number | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const uploadInFlightRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
+  const restoreNodeNameRef = useRef("");
   const pendingSaveRef = useRef<{
     id: number;
     doc: NoteDocument;
@@ -146,6 +162,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
   };
 
   const trimmedUploadUrl = uploadUrl.trim();
+  const trimmedUploadNodeName = uploadNodeName.trim();
   const isUploadUrlValid = useMemo(() => {
     if (!trimmedUploadUrl) return false;
     try {
@@ -155,13 +172,27 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
       return false;
     }
   }, [trimmedUploadUrl]);
+  const isUploadNodeNameValid = useMemo(
+    () => trimmedUploadNodeName.length > 0,
+    [trimmedUploadNodeName],
+  );
+  const trimmedRestoreUploadUrl = restoreUploadUrl.trim();
+  const isRestoreUploadUrlValid = useMemo(() => {
+    if (!trimmedRestoreUploadUrl) return false;
+    try {
+      const url = new URL(trimmedRestoreUploadUrl);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, [trimmedRestoreUploadUrl]);
 
   const selectedDocument = useMemo(
     () => documents.find((doc) => doc.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
   );
   const handleUpload = useCallback(async () => {
-    if (!isUploadUrlValid) return;
+    if (!isUploadUrlValid || !isUploadNodeNameValid) return;
     flushPendingSave();
     setShowUploadFailureBanner(false);
     try {
@@ -171,7 +202,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ nodeName: trimmedUploadNodeName, ...payload }),
       });
 
       if (!response.ok) {
@@ -184,7 +215,13 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
         setShowUploadFailureBanner(true);
       }
     }
-  }, [flushPendingSave, isUploadUrlValid, trimmedUploadUrl]);
+  }, [
+    flushPendingSave,
+    isUploadNodeNameValid,
+    isUploadUrlValid,
+    trimmedUploadNodeName,
+    trimmedUploadUrl,
+  ]);
 
   const runUpload = useCallback(async () => {
     if (uploadInFlightRef.current) return;
@@ -197,8 +234,15 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     if (!isUploadEnabled) return;
     if (!hasUploadChanges) return;
     if (!isUploadUrlValid) return;
+    if (!isUploadNodeNameValid) return;
     await runUpload();
-  }, [hasUploadChanges, isUploadEnabled, isUploadUrlValid, runUpload]);
+  }, [
+    hasUploadChanges,
+    isUploadEnabled,
+    isUploadNodeNameValid,
+    isUploadUrlValid,
+    runUpload,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -210,15 +254,92 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     };
   }, [flushPendingSave]);
   useEffect(() => {
-    if (isUploadEnabled && !isUploadUrlValid) {
+    if (isUploadEnabled && (!isUploadUrlValid || !isUploadNodeNameValid)) {
       setIsUploadEnabled(false);
     }
-  }, [isUploadEnabled, isUploadUrlValid, setIsUploadEnabled]);
+  }, [
+    isUploadEnabled,
+    isUploadNodeNameValid,
+    isUploadUrlValid,
+    setIsUploadEnabled,
+  ]);
   useEffect(() => {
     if (!hasUploadChanges) {
       setShowUploadFailureBanner(false);
     }
   }, [hasUploadChanges]);
+  useEffect(() => {
+    setRestoreUploadUrlDraft(restoreUploadUrl);
+  }, [restoreUploadUrl]);
+  useEffect(() => {
+    restoreNodeNameRef.current = restoreNodeName;
+  }, [restoreNodeName]);
+  useEffect(() => {
+    if (!isRestoreUploadUrlValid) {
+      setRestoreNodeOptions([]);
+      setRestoreNodesError(null);
+      setIsRestoreNodesLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+    setIsRestoreNodesLoading(true);
+    setRestoreNodesError(null);
+
+    const loadNodes = async () => {
+      try {
+        const response = await fetch(trimmedRestoreUploadUrl, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Restore node fetch failed: ${response.status}`);
+        }
+        const payload = (await response.json()) as unknown;
+        const rawNodes = Array.isArray(payload)
+          ? payload
+          : Array.isArray((payload as { nodes?: unknown }).nodes)
+            ? (payload as { nodes?: unknown }).nodes
+            : [];
+        const normalizedNodes = rawNodes
+          .filter((node): node is string => typeof node === "string")
+          .map((node) => node.trim())
+          .filter(Boolean);
+        const uniqueNodes = Array.from(new Set(normalizedNodes)).sort((a, b) =>
+          a.localeCompare(b),
+        );
+
+        if (!isActive) return;
+        setRestoreNodeOptions(uniqueNodes);
+        const currentNodeName = restoreNodeNameRef.current;
+        if (
+          currentNodeName &&
+          uniqueNodes.some((node) => node === currentNodeName)
+        ) {
+          return;
+        }
+        setRestoreNodeName(uniqueNodes[0] ?? "");
+      } catch (e) {
+        if (!isActive || controller.signal.aborted) return;
+        console.error(e);
+        setRestoreNodeOptions([]);
+        setRestoreNodesError("Unable to load restore nodes.");
+      } finally {
+        if (isActive) setIsRestoreNodesLoading(false);
+      }
+    };
+
+    loadNodes();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [
+    isRestoreUploadUrlValid,
+    setRestoreNodeName,
+    trimmedRestoreUploadUrl,
+  ]);
   useEffect(() => {
     if (!isUploadEnabled) return;
     const handleWindowBlur = () => {
@@ -376,6 +497,37 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     }
   };
 
+  const handleRestoreUpload = async () => {
+    if (!isRestoreUploadUrlValid || !restoreNodeName) return;
+    const confirmed = window.confirm(
+      "Restore will replace your current notes. Continue?",
+    );
+    if (!confirmed) return;
+
+    setIsRestoreUploadBusy(true);
+    try {
+      const url = new URL(trimmedRestoreUploadUrl);
+      url.searchParams.set("name", restoreNodeName);
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error(`Restore fetch failed: ${response.status}`);
+      }
+      const payload = (await response.json()) as unknown;
+      if (!isValidEncryptedRecord(payload)) {
+        alert("Invalid restore payload.");
+        return;
+      }
+      setRestoreRecord(payload);
+      setRestorePassword("");
+      setRestoreError(null);
+    } catch (e) {
+      console.error(e);
+      alert("Unable to restore from server.");
+    } finally {
+      setIsRestoreUploadBusy(false);
+    }
+  };
+
   const tagSuggestions = useMemo(() => {
     const uniqueTags = new Map<string, string>();
     documents.forEach((doc) => {
@@ -482,7 +634,8 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
   };
 
   const shouldShowConfigBanner =
-    hasUploadChanges && (!isUploadUrlValid || !isUploadEnabled);
+    hasUploadChanges &&
+    (!isUploadUrlValid || !isUploadNodeNameValid || !isUploadEnabled);
   const shouldShowUploadFailureBanner =
     !shouldShowConfigBanner &&
     showUploadFailureBanner &&
@@ -493,7 +646,7 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
     <div className="min-h-screen min-w-[320px] bg-slate-950 text-white">
       {shouldShowConfigBanner ? (
         <TopBanner
-          message="You have not configured an upload server. Your changes are only saved in this browser."
+          message="Your upload settings are incomplete. Changes are only saved in this browser."
           actionLabel="Add server"
           onAction={() => setIsSettingsOpen(true)}
         />
@@ -678,10 +831,26 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
           onRestore={handleRestoreClick}
           uploadUrl={uploadUrl}
           onUploadUrlChange={setUploadUrl}
+          uploadNodeName={uploadNodeName}
+          onUploadNodeNameChange={setUploadNodeName}
           isUploadEnabled={isUploadEnabled}
           onUploadEnabledChange={setIsUploadEnabled}
           isUploadUrlValid={isUploadUrlValid}
+          isUploadNodeNameValid={isUploadNodeNameValid}
           hasUploadChanges={hasUploadChanges}
+          restoreUploadUrl={restoreUploadUrlDraft}
+          onRestoreUploadUrlChange={setRestoreUploadUrlDraft}
+          onRestoreUploadUrlCommit={() =>
+            setRestoreUploadUrl(restoreUploadUrlDraft)
+          }
+          restoreNodeName={restoreNodeName}
+          onRestoreNodeNameChange={setRestoreNodeName}
+          restoreNodeOptions={restoreNodeOptions}
+          isRestoreUploadUrlValid={isRestoreUploadUrlValid}
+          isRestoreNodesLoading={isRestoreNodesLoading}
+          restoreNodesError={restoreNodesError}
+          onRestoreUpload={handleRestoreUpload}
+          isRestoreUploadBusy={isRestoreUploadBusy}
           isInactivityEnabled={isInactivityEnabled}
           onInactivityEnabledChange={setIsInactivityEnabled}
           inactivityMinutes={inactivityMinutes}

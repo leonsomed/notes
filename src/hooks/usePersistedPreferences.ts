@@ -3,7 +3,10 @@ import type { NoteDocument } from "../services/notesDb";
 
 const SELECTED_DOCUMENT_KEY = "notes:selectedDocumentId";
 const UPLOAD_URL_KEY = "notes:uploadUrl";
+const UPLOAD_NODE_NAME_KEY = "notes:uploadNodeName";
 const UPLOAD_ENABLED_KEY = "notes:uploadEnabled";
+const RESTORE_UPLOAD_URL_KEY = "notes:restoreUploadUrl";
+const RESTORE_NODE_NAME_KEY = "notes:restoreNodeName";
 const INACTIVITY_ENABLED_KEY = "notes:inactivityEnabled";
 const INACTIVITY_MINUTES_KEY = "notes:inactivityMinutes";
 export const DEFAULT_INACTIVITY_MINUTES = 15;
@@ -31,8 +34,17 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
   const [uploadUrl, setUploadUrl] = useState(
     () => localStorage.getItem(UPLOAD_URL_KEY) ?? "",
   );
+  const [uploadNodeName, setUploadNodeName] = useState(
+    () => localStorage.getItem(UPLOAD_NODE_NAME_KEY) ?? "",
+  );
   const [isUploadEnabled, setIsUploadEnabled] = useState(
     () => localStorage.getItem(UPLOAD_ENABLED_KEY) === "true",
+  );
+  const [restoreUploadUrl, setRestoreUploadUrl] = useState(
+    () => localStorage.getItem(RESTORE_UPLOAD_URL_KEY) ?? "",
+  );
+  const [restoreNodeName, setRestoreNodeName] = useState(
+    () => localStorage.getItem(RESTORE_NODE_NAME_KEY) ?? "",
   );
   const [isInactivityEnabled, setIsInactivityEnabled] = useState(
     () => localStorage.getItem(INACTIVITY_ENABLED_KEY) === "true",
@@ -54,8 +66,17 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
     localStorage.setItem(UPLOAD_URL_KEY, uploadUrl);
   }, [uploadUrl]);
   useEffect(() => {
+    localStorage.setItem(UPLOAD_NODE_NAME_KEY, uploadNodeName);
+  }, [uploadNodeName]);
+  useEffect(() => {
     localStorage.setItem(UPLOAD_ENABLED_KEY, String(isUploadEnabled));
   }, [isUploadEnabled]);
+  useEffect(() => {
+    localStorage.setItem(RESTORE_UPLOAD_URL_KEY, restoreUploadUrl);
+  }, [restoreUploadUrl]);
+  useEffect(() => {
+    localStorage.setItem(RESTORE_NODE_NAME_KEY, restoreNodeName);
+  }, [restoreNodeName]);
   useEffect(() => {
     localStorage.setItem(INACTIVITY_ENABLED_KEY, String(isInactivityEnabled));
   }, [isInactivityEnabled]);
@@ -68,8 +89,14 @@ export function usePersistedPreferences(documents: NoteDocument[]) {
     setSelectedDocumentId,
     uploadUrl,
     setUploadUrl,
+    uploadNodeName,
+    setUploadNodeName,
     isUploadEnabled,
     setIsUploadEnabled,
+    restoreUploadUrl,
+    setRestoreUploadUrl,
+    restoreNodeName,
+    setRestoreNodeName,
     isInactivityEnabled,
     setIsInactivityEnabled,
     inactivityMinutes,
