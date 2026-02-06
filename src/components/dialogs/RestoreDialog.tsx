@@ -1,5 +1,6 @@
-import { TextInput } from "../base/TextInput";
 import { Dialog } from "../base/Dialog";
+import { Button } from "../base/Button";
+import { TextInput } from "../base/TextInput";
 
 interface RestoreDialogProps {
   isOpen: boolean;
@@ -52,22 +53,18 @@ export function RestoreDialog({
         </p>
       ) : null}
       <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-          disabled={isBusy}
-        >
+        <Button onClick={onCancel} disabled={isBusy} size="xsWide">
           Cancel
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="soft"
+          tone="primary"
           onClick={onConfirm}
-          className="rounded-full border border-indigo-500 bg-indigo-500/10 px-4 py-1 text-xs text-indigo-100 transition hover:bg-indigo-500/20"
           disabled={isBusy}
+          size="xsWide"
         >
           {isBusy ? "Restoring..." : "Restore"}
-        </button>
+        </Button>
       </div>
     </Dialog>
   );

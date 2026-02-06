@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "./base/Button";
 import { TextInput } from "./base/TextInput";
 
 interface PairingGateProps {
@@ -59,13 +60,17 @@ export function PairingGate({
               {message}
             </p>
           ) : null}
-          <button
+          <Button
             type="submit"
             disabled={isUnlocking}
-            className="w-full rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-500/60"
+            variant="solid"
+            tone="primary"
+            size="sm"
+            fullWidth
+            className="font-semibold"
           >
             {isUnlocking ? "Unlocking..." : "Unlock"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { ActionButton } from "../base/ActionButton";
 import { Checkbox } from "../base/Checkbox";
 import { IconButton } from "../base/IconButton";
+import { Button } from "../base/Button";
 import { TextInput } from "../base/TextInput";
 import { Dialog } from "../base/Dialog";
 import { DEFAULT_INACTIVITY_MINUTES } from "../../hooks/usePersistedPreferences";
@@ -150,13 +151,9 @@ export function SettingsDialog({
         </div>
       </div>
       <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-        >
+        <Button onClick={onClose} size="xsWide">
           Done
-        </button>
+        </Button>
       </div>
     </Dialog>
   );

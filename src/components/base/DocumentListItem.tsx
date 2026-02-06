@@ -1,4 +1,4 @@
-import type { NoteDocument } from "../services/notesDb";
+import type { NoteDocument } from "../../services/notesDb";
 import { TagPill } from "./TagPill";
 
 interface DocumentListItemProps {

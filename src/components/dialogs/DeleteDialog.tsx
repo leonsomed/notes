@@ -1,4 +1,5 @@
 import { Dialog } from "../base/Dialog";
+import { Button } from "../base/Button";
 
 interface DeleteDialogProps {
   isOpen: boolean;
@@ -27,21 +28,12 @@ export function DeleteDialog({
         This action cannot be undone.
       </p>
       <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-200 transition hover:border-slate-400"
-          autoFocus
-        >
+        <Button onClick={onCancel} size="xsWide" autoFocus>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="rounded-full border border-rose-500 bg-rose-500/10 px-4 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
-        >
+        </Button>
+        <Button variant="soft" tone="danger" onClick={onConfirm} size="xsWide">
           Delete
-        </button>
+        </Button>
       </div>
     </Dialog>
   );

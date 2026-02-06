@@ -10,6 +10,7 @@ import {
 import { DocumentListItem } from "./base/DocumentListItem";
 import { IconButton } from "./base/IconButton";
 import { NoteDocumentEditor } from "./base/NoteDocumentEditor";
+import { Button } from "./base/Button";
 import { TagEditor } from "./base/TagEditor";
 import { TextInput } from "./base/TextInput";
 import { TopBanner } from "./base/TopBanner";
@@ -518,20 +519,20 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
                 onClick={() => setIsSettingsOpen(true)}
-                className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-400 hover:text-slate-100"
+                className="text-slate-300 hover:text-slate-100"
               >
                 Settings
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="solid"
+                tone="primary"
                 onClick={handleAddDocument}
-                className="rounded-full bg-indigo-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-indigo-400"
+                className="font-semibold"
               >
                 New
-              </button>
+              </Button>
             </div>
           </div>
           <input
@@ -624,13 +625,13 @@ export function NotesApp({ initialDocuments }: NotesAppProps) {
                     onRemoveTag={removeTag}
                   />
                 </div>
-                <button
-                  type="button"
+                <Button
+                  size="xsWide"
                   onClick={() => setPendingDeleteId(selectedDocument.id)}
-                  className="rounded-full border border-slate-700 px-4 py-1 text-xs text-slate-300 transition hover:border-rose-400 hover:text-rose-300"
+                  className="text-slate-300 hover:border-rose-400 hover:text-rose-300"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
 
               <div className="flex-1 min-h-0 bg-[#1f1f1f]">
